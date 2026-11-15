@@ -80,7 +80,7 @@ export default function Booking({ tipos, today, daysAhead, open, wa }: { tipos: 
     <div>
       {mine.length > 0 && (
         <a className="mine" href={`/reserva/${mine[0].id}?t=${mine[0].token}`}>
-          <span>📋 Tu reserva: {mine[0].label}</span>
+          <span>Tu reserva: {mine[0].label}</span>
           <span>Ver ›</span>
         </a>
       )}
@@ -134,7 +134,7 @@ export default function Booking({ tipos, today, daysAhead, open, wa }: { tipos: 
         <div className="step" ref={formRef}>
           <h3><span className="num">3</span> Tus datos</h3>
           <div className="sum">
-            ⚽ Fútbol {tipo} · {hm(slot.start)} hs
+            Fútbol {tipo} · {hm(slot.start)} hs
             <small>{cap(fmtLong(date))}{slot.price ? ` · ${money(slot.price)}` : ""}</small>
           </div>
           {err && <div className="err">{err}</div>}
@@ -147,7 +147,7 @@ export default function Booking({ tipos, today, daysAhead, open, wa }: { tipos: 
             <input id="p" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Ej: 11 5555 0000" />
           </div>
           <button className="btn big" disabled={busy || name.trim().length < 3 || phone.replace(/\D/g, "").length < 10} onClick={reservar}>
-            {busy ? "Reservando…" : "✅ Confirmar reserva"}
+            {busy ? "Reservando…" : "Confirmar reserva"}
           </button>
         </div>
       )}

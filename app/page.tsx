@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Booking from "./Booking";
+import { IconArrow, IconClock, IconInstagram, IconPin, IconWhatsApp, SERVICE_ICONS } from "./icons";
 import { getSite } from "@/lib/data";
 import { todayStr } from "@/lib/time";
 import { TIPOS } from "@/lib/types";
@@ -7,18 +8,19 @@ import { waLink } from "@/lib/util";
 
 export const dynamic = "force-dynamic";
 
-const WaIcon = ({ size = 22 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-    <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm-3.2 5.5c.3 0 .5 0 .7.5l.9 2.1c.1.3 0 .5-.1.7l-.6.8c-.2.2-.2.4 0 .7.9 1.6 2.200 2.800 3.800 3.600.300.100.500.100.700-.100l.800-1c.200-.200.400-.300.700-.200l2.100 1c.300.100.400.300.400.600 0 1.200-1 2.100-2.200 2.100-4.300-.300-7.900-3.900-8.200-8.200 0-1.200.900-2.200 2-2.200Z" />
-  </svg>
-);
+const STEPS = [
+  { title: "Elegí tu cancha", text: "Fútbol 5, 7, 9 u 11, según cuántos sean." },
+  { title: "Día y horario", text: "Ves en tiempo real qué turnos están libres." },
+  { title: "Confirmá y listo", text: "Sin llamadas ni esperas. La reserva queda al instante." },
+];
 
 export default async function Home() {
   const { config, courts } = await getSite();
   const logo = config.logoV ? `/api/img/logo?v=${config.logoV}` : "/logo.png";
   const wa = config.whatsapp ? waLink(config.whatsapp, "Hola! Quiero hacer una consulta.") : "";
+  const active = courts.filter((c) => c.active);
   const tipos = TIPOS.map((tipo) => {
-    const mine = courts.filter((c) => c.active && c.tipo === tipo);
+    const mine = active.filter((c) => c.tipo === tipo);
     const prices = mine.map((c) => c.priceDay).filter((p) => p > 0);
     return { tipo, count: mine.length, from: prices.length ? Math.min(...prices) : 0 };
   }).filter((t) => t.count > 0);
@@ -26,99 +28,170 @@ export default async function Home() {
   return (
     <>
       {config.notice && <div className="notice">{config.notice}</div>}
+
       <header className="top">
-        <div className="wrap">
-          <a href="#" className="brand">
+        <div className="wrap wide">
+          <a href="#inicio" className="brand">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={logo} alt={config.name} />
+            <span className="brand-name">{config.name}</span>
           </a>
+          <nav className="nav" aria-label="Principal">
+            <a href="#como">Cómo funciona</a>
+            {config.services.length > 0 && <a href="#servicios">Servicios</a>}
+            <a href="#ubicacion">Dónde estamos</a>
+          </nav>
           <a href="#reservar" className="btn sm">Reservar</a>
         </div>
       </header>
 
-      <section className={"hero" + (config.coverV ? " photo" : "")} style={config.coverV ? { backgroundImage: `url(/api/img/cover?v=${config.coverV})` } : undefined}>
-        <div className="wrap">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="logo" src={logo} alt={config.name} />
-          <h1 className="title">{config.slogan || config.name}</h1>
-          {config.description && <p>{config.description}</p>}
-          <a href="#reservar" className="btn big" style={{ maxWidth: 380 }}>⚽ Reservá ya</a>
+      <section
+        id="inicio"
+        className={"hero" + (config.coverV ? " photo" : "")}
+        style={config.coverV ? { backgroundImage: `url(/api/img/cover?v=${config.coverV})` } : undefined}
+      >
+        <div className="pitch" aria-hidden />
+        <div className="wrap wide hero-grid">
+          <div className="hero-copy">
+            <span className="eyebrow"><i /> Reservas online 24/7</span>
+            <h1 className="display">{config.slogan || config.name}</h1>
+            {config.description && <p className="lead">{config.description}</p>}
+            <div className="row hero-cta">
+              <a href="#reservar" className="btn big">Reservar cancha <IconArrow size={20} /></a>
+              {wa && (
+                <a href={wa} target="_blank" rel="noopener" className="btn ghost big">
+                  <IconWhatsApp size={20} /> Consultar
+                </a>
+              )}
+            </div>
+            <dl className="facts">
+              <div><dt>{active.length}</dt><dd>Canchas</dd></div>
+              <div><dt>{tipos.length > 0 ? tipos.map((t) => t.tipo).join(" · ") : "—"}</dt><dd>Formatos</dd></div>
+              <div><dt>1 min</dt><dd>Para reservar</dd></div>
+            </dl>
+          </div>
+          <div className="hero-logo">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={logo} alt="" />
+          </div>
+        </div>
+      </section>
+
+      <section className="band" id="como">
+        <div className="wrap wide">
+          <div className="steps3">
+            {STEPS.map((s, i) => (
+              <div className="how" key={i}>
+                <span className="how-n">0{i + 1}</span>
+                <h3>{s.title}</h3>
+                <p className="mut">{s.text}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       <main className="wrap">
-        <section className="sec" id="reservar" style={{ scrollMarginTop: 70 }}>
-          <h2 className="title">Reservá tu cancha</h2>
-          <Booking tipos={tipos} today={todayStr()} daysAhead={config.daysAhead} open={config.open} wa={wa} />
-        </section>
-
-        {config.services.length > 0 && (
-          <section className="sec">
-            <h2 className="title">Qué tenemos</h2>
-            <div className="cards">
-              {config.services.map((s, i) => (
-                <div className="card" key={i}>
-                  <h3>{s.title}</h3>
-                  <p className="mut">{s.text}</p>
-                </div>
-              ))}
-            </div>
-            {wa && (
-              <a href={waLink(config.whatsapp, "Hola! Quiero consultar por un evento / cumpleaños.")} target="_blank" rel="noopener" className="btn ghost full" style={{ marginTop: 14 }}>
-                <WaIcon /> Consultar por eventos
-              </a>
-            )}
-          </section>
-        )}
-
-        <section className="sec">
-          <h2 className="title">Dónde estamos</h2>
-          <div className="card">
-            <ul className="info">
-              {config.address && (
-                <li>
-                  <span>📍</span>
-                  <div>
-                    <b>{config.address}</b>
-                    <br />
-                    <a className="mut" style={{ textDecoration: "underline" }} target="_blank" rel="noopener" href={config.mapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(config.address)}`}>
-                      Cómo llegar
-                    </a>
-                  </div>
-                </li>
-              )}
-              {config.hours && (
-                <li>
-                  <span>🕒</span>
-                  <b>{config.hours}</b>
-                </li>
-              )}
-              {wa && (
-                <li>
-                  <span>📲</span>
-                  <a href={wa} target="_blank" rel="noopener"><b>Escribinos por WhatsApp</b></a>
-                </li>
-              )}
-              {config.instagram && (
-                <li>
-                  <span>📷</span>
-                  <a href={`https://instagram.com/${config.instagram}`} target="_blank" rel="noopener"><b>@{config.instagram}</b></a>
-                </li>
-              )}
-            </ul>
+        <section className="sec" id="reservar" style={{ scrollMarginTop: 80 }}>
+          <div className="sec-head">
+            <span className="kicker">Reservas</span>
+            <h2 className="display">Reservá tu cancha</h2>
+            <p className="mut">Elegí formato, día y horario. La confirmación es inmediata.</p>
+          </div>
+          <div className="panel-card">
+            <Booking tipos={tipos} today={todayStr()} daysAhead={config.daysAhead} open={config.open} wa={wa} />
           </div>
         </section>
       </main>
 
+      {config.services.length > 0 && (
+        <section className="sec tint" id="servicios">
+          <div className="wrap wide">
+            <div className="sec-head">
+              <span className="kicker">Servicios</span>
+              <h2 className="display">Qué tenemos</h2>
+            </div>
+            <div className="cards">
+              {config.services.map((s, i) => {
+                const Icon = SERVICE_ICONS[i % SERVICE_ICONS.length];
+                return (
+                  <div className="card svc" key={i}>
+                    <span className="ico"><Icon size={24} /></span>
+                    <h3>{s.title}</h3>
+                    <p className="mut">{s.text}</p>
+                  </div>
+                );
+              })}
+            </div>
+            {wa && (
+              <a href={waLink(config.whatsapp, "Hola! Quiero consultar por un evento / cumpleaños.")} target="_blank" rel="noopener" className="btn ghost" style={{ marginTop: 20 }}>
+                <IconWhatsApp size={20} /> Consultar por eventos
+              </a>
+            )}
+          </div>
+        </section>
+      )}
+
+      <section className="sec" id="ubicacion">
+        <div className="wrap wide">
+          <div className="sec-head">
+            <span className="kicker">Contacto</span>
+            <h2 className="display">Dónde estamos</h2>
+          </div>
+          <div className="cards info-grid">
+            {config.address && (
+              <div className="card info-item">
+                <span className="ico"><IconPin size={22} /></span>
+                <div>
+                  <small className="mut">Dirección</small>
+                  <b>{config.address}</b>
+                  <a className="link" target="_blank" rel="noopener" href={config.mapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(config.address)}`}>
+                    Cómo llegar →
+                  </a>
+                </div>
+              </div>
+            )}
+            {config.hours && (
+              <div className="card info-item">
+                <span className="ico"><IconClock size={22} /></span>
+                <div>
+                  <small className="mut">Horarios</small>
+                  <b>{config.hours}</b>
+                </div>
+              </div>
+            )}
+            {wa && (
+              <div className="card info-item">
+                <span className="ico"><IconWhatsApp size={22} /></span>
+                <div>
+                  <small className="mut">WhatsApp</small>
+                  <a href={wa} target="_blank" rel="noopener"><b>Escribinos</b></a>
+                </div>
+              </div>
+            )}
+            {config.instagram && (
+              <div className="card info-item">
+                <span className="ico"><IconInstagram size={22} /></span>
+                <div>
+                  <small className="mut">Instagram</small>
+                  <a href={`https://instagram.com/${config.instagram}`} target="_blank" rel="noopener"><b>@{config.instagram}</b></a>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
       <footer className="foot">
-        <div className="wrap">
-          {config.name} · <Link href="/panel" style={{ textDecoration: "underline" }}>Administración</Link>
+        <div className="wrap wide foot-in">
+          <span>© {new Date().getFullYear()} {config.name}</span>
+          <Link href="/panel">Administración</Link>
         </div>
       </footer>
 
       {wa && (
-        <a className="fab" href={wa} target="_blank" rel="noopener" aria-label="WhatsApp" style={{ color: "#fff" }}>
-          <WaIcon size={32} />
+        <a className="fab" href={wa} target="_blank" rel="noopener" aria-label="WhatsApp">
+          <IconWhatsApp size={30} />
         </a>
       )}
     </>
