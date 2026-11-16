@@ -1,14 +1,31 @@
 import Panel from "./Panel";
 import Login from "./Login";
-import { getAuth, isAdmin } from "@/lib/auth";
-import { getSite } from "@/lib/data";
-import { todayStr } from "@/lib/time";
+import { getAuth, getRole } from "@/lib/auth";
+import { getProducts, getSite } from "@/lib/data";
+import { VAPID_PUBLIC } from "@/lib/push";
+import { addDays, isValidDate, todayStr } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Panel", robots: { index: false, follow: false } };
+export const metadata = { title: "Panel", robots: { index: false, follow: false }, manifest: "/panel/manifest.webmanifest" };
 
-export default async function PanelPage() {
-  if (!(await isAdmin())) return <Login first={!(await getAuth())} />;
-  const { config, courts } = await getSite();
-  return <Panel initialConfig={config} initialCourts={courts} today={todayStr()} />;
+export default async function PanelPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
+  const [role, auth] = await Promise.all([getRole(), getAuth()]);
+  if (!role) return <Login first={!auth} />;
+  const [{ config, courts }, products, sp] = await Promise.all([getSite(), getProducts(), searchParams]);
+  const today = todayStr();
+  // ?d=AAAA-MM-DD abre la agenda en ese día (lo usan las notificaciones)
+  const initialDate = isValidDate(sp.d) && sp.d >= addDays(today, -60) && sp.d <= addDays(today, 90) ? sp.d : today;
+  const admin = role === "admin";
+  return (
+    <Panel
+      initialConfig={config}
+      initialCourts={courts}
+      initialProducts={products}
+      today={today}
+      initialDate={initialDate}
+      role={role}
+      hasStaff={admin && !!auth?.staff}
+      vapidKey={VAPID_PUBLIC}
+    />
+  );
 }

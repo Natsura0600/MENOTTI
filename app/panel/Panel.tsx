@@ -1,15 +1,21 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { addDays, cap, fmtLong, hm, parseHM, DOW_NAMES, dayOfWeek } from "@/lib/time";
-import { TIPOS, type Booking, type Config, type Court, type Service } from "@/lib/types";
+import { TIPOS, type Booking, type Caja, type Config, type Court, type Photo, type Product, type Role, type Service } from "@/lib/types";
 import { api, errMsg, money, waLink } from "@/lib/util";
+import { cajaOf, Productos, totals, TurnoCaja } from "./Caja";
+import Notif from "./Notif";
 
-type Tab = "turnos" | "canchas" | "web" | "ajustes";
+type Tab = "turnos" | "caja" | "canchas" | "web" | "ajustes";
+type Props = { initialConfig: Config; initialCourts: Court[]; initialProducts: Product[]; today: string; initialDate: string; role: Role; hasStaff: boolean; vapidKey: string };
 
-export default function Panel({ initialConfig, initialCourts, today }: { initialConfig: Config; initialCourts: Court[]; today: string }) {
+export default function Panel({ initialConfig, initialCourts, initialProducts, today, initialDate, role, hasStaff, vapidKey }: Props) {
+  const admin = role === "admin";
+  const tabs: Tab[] = admin ? ["turnos", "caja", "canchas", "web", "ajustes"] : ["turnos"];
   const [tab, setTab] = useState<Tab>("turnos");
   const [config, setConfig] = useState(initialConfig);
   const [courts, setCourts] = useState(initialCourts);
+  const [products, setProducts] = useState(initialProducts);
   const [toast, setToast] = useState("");
   const say = useCallback((m: string) => {
     setToast(m);
@@ -23,21 +29,24 @@ export default function Panel({ initialConfig, initialCourts, today }: { initial
           <a href="/" className="brand" target="_blank">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.png" alt="M10" />
-            <span>Panel</span>
+            <span>{admin ? "Panel" : "Turnos"}</span>
           </a>
           <button className="btn sm ghost" onClick={async () => { await api("/api/auth/logout", "POST"); location.reload(); }}>Salir</button>
         </div>
       </header>
-      <nav className="tabs">
-        {(["turnos", "canchas", "web", "ajustes"] as Tab[]).map((t) => (
-          <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "web" ? "Mi web" : t}</button>
-        ))}
-      </nav>
+      {tabs.length > 1 && (
+        <nav className="tabs">
+          {tabs.map((t) => (
+            <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t === "web" ? "Mi web" : t}</button>
+          ))}
+        </nav>
+      )}
       <main className="wrap wide" style={{ paddingBottom: 40 }}>
-        {tab === "turnos" && <Agenda today={today} say={say} />}
+        {tab === "turnos" && <Agenda today={today} initialDate={initialDate} say={say} admin={admin} products={products} vapidKey={vapidKey} />}
+        {tab === "caja" && <Productos products={products} onSaved={(p) => { setProducts(p); say("Productos guardados ✓"); }} />}
         {tab === "canchas" && <Canchas courts={courts} onSaved={(c) => { setCourts(c); say("Canchas guardadas ✓"); }} />}
         {tab === "web" && <Web config={config} onSaved={(c) => { setConfig(c); say("Cambios guardados ✓"); }} />}
-        {tab === "ajustes" && <Ajustes config={config} onSaved={(c) => { setConfig(c); say("Cambios guardados ✓"); }} say={say} />}
+        {tab === "ajustes" && <Ajustes config={config} hasStaff={hasStaff} onSaved={(c) => { setConfig(c); say("Cambios guardados ✓"); }} say={say} />}
       </main>
       {toast && <div className="toast">{toast}</div>}
     </>
@@ -69,18 +78,20 @@ function slotsOf(c: Court) {
   return out;
 }
 
-function Agenda({ today, say }: { today: string; say: (m: string) => void }) {
-  const [date, setDate] = useState(today);
-  const [data, setData] = useState<{ courts: Court[]; bookings: Booking[] } | null>(null);
+type AgendaProps = { today: string; initialDate: string; say: (m: string) => void; admin: boolean; products: Product[]; vapidKey: string };
+
+function Agenda({ today, initialDate, say, admin, products, vapidKey }: AgendaProps) {
+  const [date, setDate] = useState(initialDate);
+  const [data, setData] = useState<{ courts: Court[]; bookings: Booking[]; caja: Record<string, Caja> } | null>(null);
   const [sel, setSel] = useState<Sel | null>(null);
   const ver = useRef<string | null>(null);
   const lastAt = useRef<number>(Date.now());
 
   const load = useCallback(async () => {
     try {
-      const r = await api<{ courts: Court[]; bookings: Booking[]; v: string }>(`/api/panel/agenda?date=${date}`);
+      const r = await api<{ courts: Court[]; bookings: Booking[]; caja: Record<string, Caja>; v: string }>(`/api/panel/agenda?date=${date}`);
       ver.current = r.v;
-      setData({ courts: r.courts, bookings: r.bookings });
+      setData({ courts: r.courts, bookings: r.bookings, caja: r.caja ?? {} });
     } catch (e) {
       if (errMsg(e).includes("sesión")) location.reload();
     }
@@ -91,9 +102,10 @@ function Agenda({ today, say }: { today: string; say: (m: string) => void }) {
     load();
   }, [load]);
 
-  // Cada 15 segundos pregunta si hubo cambios; si entra una reserva online, suena y avisa
+  // Cada minuto (y al volver a la app) pregunta si hubo cambios; si entra una reserva online, suena y avisa.
+  // Esa consulta sale de la caché del servidor, así que tener el panel abierto todo el día no gasta la base.
   useEffect(() => {
-    const id = setInterval(async () => {
+    const check = async () => {
       if (document.hidden) return;
       try {
         const r = await api<{ v: string; last: { name: string; date: string; start: number; at: number } | null }>("/api/panel/cambios");
@@ -104,14 +116,28 @@ function Agenda({ today, say }: { today: string; say: (m: string) => void }) {
         }
         if (ver.current && r.v !== ver.current) load();
       } catch {}
-    }, 15000);
-    return () => clearInterval(id);
+    };
+    const id = setInterval(check, 60000);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", check);
+    };
   }, [load, say, today]);
 
   const courts = data?.courts.filter((c) => c.active) ?? [];
   const bookings = data?.bookings ?? [];
   const real = bookings.filter((b) => b.origin !== "bloqueo");
   const total = real.reduce((s, b) => s + b.price, 0);
+  const cajaMap = data?.caja ?? {};
+  // Resumen de caja del día (solo lo ve el dueño)
+  const day = real.reduce(
+    (acc, b) => {
+      const t = totals(b.price, cajaOf(b, cajaMap));
+      return { drinks: acc.drinks + t.drinks, cobrado: acc.cobrado + t.cobrado, falta: acc.falta + t.falta };
+    },
+    { drinks: 0, cobrado: 0, falta: 0 },
+  );
 
   function sharedBusy(c: Court, t: number) {
     const ids = new Set(c.shares);
@@ -121,6 +147,7 @@ function Agenda({ today, say }: { today: string; say: (m: string) => void }) {
 
   return (
     <>
+      <Notif vapidKey={vapidKey} say={say} />
       <div className="datebar">
         <button className="btn dark sq" onClick={() => setDate(addDays(date, -1))} aria-label="Día anterior">‹</button>
         <div className="mid">
@@ -134,7 +161,10 @@ function Agenda({ today, say }: { today: string; say: (m: string) => void }) {
       </div>
       <div className="stats">
         <span className="chip">⚽ {real.length} turnos</span>
-        {total > 0 && <span className="chip">💰 {money(total)}</span>}
+        {admin && total > 0 && <span className="chip">💰 Canchas {money(total)}</span>}
+        {admin && day.drinks > 0 && <span className="chip">🍺 Bebidas {money(day.drinks)}</span>}
+        {admin && day.cobrado > 0 && <span className="chip" style={{ borderColor: "var(--g)" }}>✓ Cobrado {money(day.cobrado)}</span>}
+        {admin && day.falta > 0 && total + day.drinks > 0 && <span className="chip" style={{ borderColor: "var(--amber)" }}>Falta {money(day.falta)}</span>}
       </div>
       <div className="legend">
         <span><i style={{ background: "var(--g)" }} />Reservado</span>
@@ -157,6 +187,7 @@ function Agenda({ today, say }: { today: string; say: (m: string) => void }) {
                   <button key={t} className={"slot " + cls} disabled={!!sh} onClick={() => setSel({ court: c, start: t, booking: b })}>
                     <b>{hm(t)}</b>
                     <span>{b ? (b.origin === "web" ? "🌐 " : b.origin === "fijo" ? "📌 " : b.origin === "bloqueo" ? "🚫 " : "") + b.name : sh ? "Ocupada (cancha compartida)" : "Libre"}</span>
+                    {b && b.origin !== "bloqueo" && <CajaMark b={b} map={cajaMap} />}
                   </button>
                 );
               })}
@@ -168,6 +199,13 @@ function Agenda({ today, say }: { today: string; say: (m: string) => void }) {
         <SlotModal
           sel={sel}
           date={date}
+          products={products}
+          cajaMap={cajaMap}
+          onCaja={(id, c, m) => {
+            setData((d) => (d ? { ...d, caja: { ...d.caja, [id]: c } } : d));
+            say(m);
+            load();
+          }}
           onClose={() => setSel(null)}
           onDone={(m) => {
             setSel(null);
@@ -180,7 +218,23 @@ function Agenda({ today, say }: { today: string; say: (m: string) => void }) {
   );
 }
 
-function SlotModal({ sel, date, onClose, onDone }: { sel: Sel; date: string; onClose: () => void; onDone: (m: string) => void }) {
+/** Marca chica en la agenda: cuántas bebidas lleva el turno y si ya está todo pago */
+function CajaMark({ b, map }: { b: Booking; map: Record<string, Caja> }) {
+  const c = cajaOf(b, map);
+  const t = totals(b.price, c);
+  if (!t.units && !t.n) return null;
+  const paid = t.total > 0 ? t.falta === 0 : t.n > 0 && t.paidN === t.n;
+  return (
+    <small className={"cajamark" + (paid ? " ok" : "")}>
+      {t.units > 0 && `🍺 ${t.units} `}
+      {paid ? "✓ Pagado" : t.n > 0 ? `Pagaron ${t.paidN}/${t.n}` : t.falta > 0 ? "Sin cobrar" : ""}
+    </small>
+  );
+}
+
+type SlotModalProps = { sel: Sel; date: string; products: Product[]; cajaMap: Record<string, Caja>; onCaja: (id: string, c: Caja, msg: string) => void; onClose: () => void; onDone: (m: string) => void };
+
+function SlotModal({ sel, date, products, cajaMap, onCaja, onClose, onDone }: SlotModalProps) {
   const { court, start, booking: b } = sel;
   const [type, setType] = useState<"manual" | "fijo" | "bloqueo">("manual");
   const [name, setName] = useState("");
@@ -226,6 +280,9 @@ function SlotModal({ sel, date, onClose, onDone }: { sel: Sel; date: string; onC
               <a className="btn full" target="_blank" rel="noopener" href={waLink(b.phone, `Hola ${b.name.split(" ")[0]}! Te escribimos de M10 por tu turno del ${fmtLong(date)} a las ${hm(b.start)}.`)}>
                 📲 Escribirle por WhatsApp
               </a>
+            )}
+            {b.origin !== "bloqueo" && (
+              <TurnoCaja key={b.id} b={b} court={court} date={date} initial={cajaOf(b, cajaMap)} saved={!!cajaMap[b.id]} products={products} onSaved={(c, m) => onCaja(b.id, c, m)} />
             )}
             {b.origin === "fijo" ? (
               <>
@@ -397,6 +454,31 @@ function Web({ config, onSaved }: { config: Config; onSaved: (c: Config) => void
     setBusy(false);
   }
 
+  async function addPhoto(file?: File | null) {
+    if (!file) return;
+    setErr("");
+    setBusy(true);
+    try {
+      // se achica en el celular: pesa poco y carga rápido en la web
+      const r = await api<{ config: Config }>("/api/panel/imagen", "POST", { kind: "foto", dataUrl: await shrink(file, 1280, 0.78) });
+      setF({ ...f, photos: r.config.photos });
+      onSaved(r.config);
+    } catch (e) {
+      setErr(errMsg(e));
+    }
+    setBusy(false);
+  }
+  async function delPhoto(p: Photo) {
+    if (!confirm("¿Quitar esta foto de la web?")) return;
+    try {
+      const r = await api<{ config: Config }>("/api/panel/imagen", "POST", { kind: "foto", id: p.id, dataUrl: "" });
+      setF({ ...f, photos: r.config.photos });
+      onSaved(r.config);
+    } catch (e) {
+      setErr(errMsg(e));
+    }
+  }
+
   async function upload(kind: "logo" | "cover", file?: File | null) {
     setErr("");
     try {
@@ -470,6 +552,26 @@ function Web({ config, onSaved }: { config: Config; onSaved: (c: Config) => void
           );
         })}
       </div>
+      <div className="card" style={{ marginBottom: 14 }}>
+        <h3 style={{ marginBottom: 4 }}>Fotos de las canchas</h3>
+        <p className="hint" style={{ margin: "0 0 12px" }}>Se ven en la web. Hasta 8 fotos; las mejores son de día o con las luces prendidas, con la cancha entera.</p>
+        {(f.photos ?? []).map((p, i) => (
+          <div className="row" key={p.id} style={{ marginBottom: 12, flexWrap: "nowrap" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="thumb" src={`/api/img/foto_${p.id}?v=${p.v}`} alt="" />
+            <div className="grow">
+              <input type="text" value={p.caption} placeholder="Texto (opcional). Ej: Cancha de 7" maxLength={60} onChange={(e) => set("photos", f.photos.map((x, j) => (j === i ? { ...x, caption: e.target.value } : x)))} />
+              <button className="btn sm ghost" style={{ marginTop: 6 }} onClick={() => delPhoto(p)}>Quitar</button>
+            </div>
+          </div>
+        ))}
+        {(f.photos ?? []).length < 8 && (
+          <label className="btn sm dark" style={{ marginBottom: 0 }}>
+            {busy ? "Subiendo…" : "+ Agregar foto"}
+            <input type="file" accept="image/*" hidden disabled={busy} onChange={(e) => { addPhoto(e.target.files?.[0]); e.target.value = ""; }} />
+          </label>
+        )}
+      </div>
       <div className="savebar">
         <button className="btn big" disabled={busy} onClick={save}>{busy ? "Guardando…" : "Guardar cambios"}</button>
       </div>
@@ -478,7 +580,7 @@ function Web({ config, onSaved }: { config: Config; onSaved: (c: Config) => void
 }
 
 /** Achica la foto en el celular antes de subirla */
-function shrink(file: File, max: number): Promise<string> {
+function shrink(file: File, max: number, quality = 0.82): Promise<string> {
   return new Promise((res, rej) => {
     const img = new Image();
     img.onload = () => {
@@ -488,7 +590,7 @@ function shrink(file: File, max: number): Promise<string> {
       cv.height = Math.round(img.height * k);
       cv.getContext("2d")!.drawImage(img, 0, 0, cv.width, cv.height);
       URL.revokeObjectURL(img.src);
-      res(cv.toDataURL("image/jpeg", 0.82));
+      res(cv.toDataURL("image/jpeg", quality));
     };
     img.onerror = () => rej(new Error("No se pudo leer la imagen."));
     img.src = URL.createObjectURL(file);
@@ -496,7 +598,20 @@ function shrink(file: File, max: number): Promise<string> {
 }
 
 // ======================= AJUSTES =======================
-function Ajustes({ config, onSaved, say }: { config: Config; onSaved: (c: Config) => void; say: (m: string) => void }) {
+function Ajustes({ config, hasStaff: initialStaff, onSaved, say }: { config: Config; hasStaff: boolean; onSaved: (c: Config) => void; say: (m: string) => void }) {
+  const [hasStaff, setHasStaff] = useState(initialStaff);
+  const [staffPw, setStaffPw] = useState("");
+  async function saveStaff(value: string) {
+    setErr("");
+    try {
+      const r = await api<{ staff: boolean }>("/api/panel/password", "POST", { staff: value });
+      setHasStaff(r.staff);
+      setStaffPw("");
+      say(r.staff ? "Contraseña del empleado guardada ✓" : "Usuario empleado quitado");
+    } catch (e) {
+      setErr(errMsg(e));
+    }
+  }
   const [f, setF] = useState(config);
   const [night, setNight] = useState(hm(config.nightFrom));
   const [err, setErr] = useState("");
@@ -558,8 +673,20 @@ function Ajustes({ config, onSaved, say }: { config: Config; onSaved: (c: Config
         </div>
         <button className="btn full" disabled={busy} onClick={save}>{busy ? "Guardando…" : "Guardar"}</button>
       </div>
+      <div className="card" style={{ marginBottom: 14 }}>
+        <h3 style={{ marginBottom: 4 }}>Usuario para el empleado</h3>
+        <p className="hint" style={{ margin: "0 0 12px" }}>
+          Entra al mismo panel con su propia contraseña y ve solo los turnos: puede cargar y cancelar turnos, anotar bebidas y quién pagó. No ve el resumen de caja, las canchas, la web ni los ajustes.
+        </p>
+        <p style={{ marginBottom: 10 }}>{hasStaff ? "✓ El empleado ya tiene contraseña." : "Todavía no hay usuario empleado."}</p>
+        <div className="field"><label>{hasStaff ? "Cambiarle la contraseña (mínimo 6)" : "Contraseña del empleado (mínimo 6)"}</label><input type="text" autoComplete="off" value={staffPw} onChange={(e) => setStaffPw(e.target.value)} /></div>
+        <div className="row">
+          <button className="btn ghost grow" disabled={staffPw.length < 6} onClick={() => saveStaff(staffPw)}>{hasStaff ? "Cambiar contraseña" : "Crear usuario empleado"}</button>
+          {hasStaff && <button className="btn sm danger" onClick={() => confirm("¿Quitar el usuario del empleado? Se le cierra la sesión.") && saveStaff("")}>Quitar</button>}
+        </div>
+      </div>
       <div className="card">
-        <h3 style={{ marginBottom: 12 }}>Cambiar contraseña del panel</h3>
+        <h3 style={{ marginBottom: 12 }}>Cambiar mi contraseña (dueño)</h3>
         <div className="field"><label>Actual</label><input type="password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} /></div>
         <div className="field"><label>Nueva (mínimo 6)</label><input type="password" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} /></div>
         <button className="btn ghost full" disabled={!pw.current || pw.next.length < 6} onClick={changePw}>Cambiar contraseña</button>

@@ -1,6 +1,7 @@
+import { bust, cached, TAG } from "./cache";
 import { kv } from "./kv";
 import { addDays, dayOfWeek, minutesUntil, todayStr } from "./time";
-import { TIPOS, type Booking, type Config, type Court, type Fijo, type LastBooking, type Reserva, type Tipo } from "./types";
+import { TIPOS, type Booking, type Caja, type Config, type Court, type Fijo, type Item, type LastBooking, type Product, type Reserva, type Tipo } from "./types";
 
 // ---------- valores iniciales (después se cambian desde el panel) ----------
 export const DEFAULT_CONFIG: Config = {
@@ -26,6 +27,7 @@ export const DEFAULT_CONFIG: Config = {
   open: true,
   logoV: 0,
   coverV: 0,
+  photos: [],
 };
 
 const court = (id: string, name: string, tipo: Tipo): Court => ({ id, name, tipo, detail: "", dur: 60, open: 9 * 60, close: 24 * 60, priceDay: 0, priceNight: 0, shares: [], active: true });
@@ -33,6 +35,7 @@ export const DEFAULT_COURTS: Court[] = [court("c3", "Cancha de 7", 7), court("c4
 
 const K = {
   day: (date: string) => `res:${date}`,
+  caja: (date: string) => `caja:${date}`,
   skip: (date: string) => `fskip:${date}`,
   rid: (id: string) => `rid:${id}`,
 };
@@ -48,16 +51,23 @@ export function newToken() {
 }
 
 // ---------- configuración y canchas ----------
-/** Lee configuración y canchas en un solo comando */
-export async function getSite(): Promise<{ config: Config; courts: Court[] }> {
+/** Lee configuración y canchas directo de la base, en un solo comando. Usar siempre antes de escribir. */
+export async function getSiteFresh(): Promise<{ config: Config; courts: Court[] }> {
   const [c, k] = await kv.mget<unknown>(["config", "courts"]);
   // Se descartan canchas guardadas de un tamaño que ya no se ofrece (ej: fútbol 5)
   const courts = ((k as Court[] | null) ?? DEFAULT_COURTS).filter((x) => TIPOS.includes(x.tipo));
   return { config: { ...DEFAULT_CONFIG, ...((c as Partial<Config>) ?? {}) }, courts };
 }
-export const saveConfig = (c: Config) => kv.set("config", c);
+/** Igual, pero desde la caché: no gasta comandos mientras nadie cambie nada. Para todo lo que solo muestra. */
+export const getSite = () => cached(["site"], [TAG.site], 3600, getSiteFresh);
+
+export async function saveConfig(c: Config) {
+  await kv.set("config", c);
+  bust(TAG.site);
+}
 export async function saveCourts(courts: Court[]) {
   await kv.set("courts", courts);
+  bust(TAG.site);
   await touch();
 }
 
@@ -81,26 +91,45 @@ export function isBusy(bookings: Booking[], ids: Set<string>, start: number, dur
 // ---------- cambios en vivo (el panel pregunta si cambió algo) ----------
 export async function touch() {
   await kv.set("ver", "v" + Date.now() + Math.floor(Math.random() * 1000));
+  bust(TAG.live);
 }
-export async function getLive() {
-  const [v, last] = await kv.mget<unknown>(["ver", "last"]);
-  return { v: v == null ? "0" : String(v), last: (last as LastBooking | null) ?? null };
-}
+/** El panel pregunta esto cada minuto: sale de la caché y solo toca la base cuando hubo un cambio */
+export const getLive = () =>
+  cached(["live"], [TAG.live], 600, async () => {
+    const [v, last] = await kv.mget<unknown>(["ver", "last"]);
+    return { v: v == null ? "0" : String(v), last: (last as LastBooking | null) ?? null };
+  });
 
 // ---------- turnos ----------
-export async function getFijos(): Promise<Fijo[]> {
+export async function getFijosFresh(): Promise<Fijo[]> {
   return (await kv.get<Fijo[]>("fijos")) ?? [];
 }
+export const getFijos = () => cached(["fijos"], [TAG.fijos], 3600, getFijosFresh);
+async function saveFijos(fijos: Fijo[]) {
+  await kv.set("fijos", fijos);
+  bust(TAG.fijos);
+}
 
-export async function dayBookings(date: string, courts: Court[], nightFrom: number, fijosIn?: Fijo[]): Promise<Booking[]> {
-  const [res, fijos, skips] = await Promise.all([kv.hgetall<Reserva>(K.day(date)), fijosIn ?? getFijos(), kv.smembers(K.skip(date))]);
-  const out: Booking[] = Object.values(res).map((r) => ({ id: r.id, courtId: r.courtId, start: r.start, dur: r.dur, name: r.name, phone: r.phone, origin: r.origin, price: r.price }));
+type DayRaw = { res: Reserva[]; skips: string[] };
+async function dayRawFresh(date: string): Promise<DayRaw> {
+  const [res, skips] = await Promise.all([kv.hgetall<Reserva>(K.day(date)), kv.smembers(K.skip(date))]);
+  return { res: Object.values(res), skips };
+}
+const dayRaw = (date: string) => cached(["day", date], [TAG.day(date)], 300, () => dayRawFresh(date));
+
+/**
+ * Turnos de un día (reservas + turnos fijos).
+ * fresh=true lee directo de la base (para reservar y para el panel); si no, usa la caché (web pública).
+ */
+export async function dayBookings(date: string, courts: Court[], nightFrom: number, fresh = false): Promise<Booking[]> {
+  const [{ res, skips }, fijos] = await Promise.all([fresh ? dayRawFresh(date) : dayRaw(date), fresh ? getFijosFresh() : getFijos()]);
+  const out: Booking[] = res.map((r) => ({ id: r.id, courtId: r.courtId, start: r.start, dur: r.dur, name: r.name, phone: r.phone, origin: r.origin, price: r.price }));
   const dow = dayOfWeek(date);
   for (const f of fijos) {
     if (f.dow !== dow || date < f.since || skips.includes(f.id)) continue;
     const c = courts.find((x) => x.id === f.courtId);
     if (!c) continue;
-    out.push({ id: f.id, courtId: f.courtId, start: f.start, dur: f.dur, name: f.name, phone: f.phone, origin: "fijo", price: priceOf(c, f.start, nightFrom) });
+    out.push({ id: f.id, courtId: f.courtId, start: f.start, dur: f.dur, name: f.name, phone: f.phone, origin: "fijo", price: priceOf(c, f.start, nightFrom), habitual: f.items });
   }
   return out.sort((a, b) => a.start - b.start);
 }
@@ -128,7 +157,7 @@ type NewReserva = { courtId?: string; tipo?: Tipo; date: string; start: number; 
  * asigna la primera cancha libre de ese tamaño. Desde el panel se elige la cancha.
  */
 export async function createReserva(input: NewReserva, staff = false): Promise<Reserva> {
-  const { config, courts } = await getSite();
+  const { config, courts } = await getSiteFresh();
   if (!staff) {
     if (!config.open) throw new BookingError("Las reservas online están pausadas. Escribinos por WhatsApp.");
     const today = todayStr();
@@ -139,7 +168,7 @@ export async function createReserva(input: NewReserva, staff = false): Promise<R
   if (!candidates.length) throw new BookingError("La cancha no existe.");
 
   return withLock(input.date, async () => {
-    const bookings = await dayBookings(input.date, courts, config.nightFrom);
+    const bookings = await dayBookings(input.date, courts, config.nightFrom, true);
     if (!staff && input.phone && bookings.filter((b) => b.phone === input.phone).length >= 2) {
       throw new BookingError("Ya tenés 2 turnos ese día. Para reservar más escribinos por WhatsApp.");
     }
@@ -164,6 +193,7 @@ export async function createReserva(input: NewReserva, staff = false): Promise<R
       const last: LastBooking = { name: r.name, date: r.date, start: r.start, at: Date.now() };
       await kv.set("last", last, { ex: 60 * 60 * 24 });
     }
+    bust(TAG.day(r.date));
     await touch();
     return r;
   });
@@ -177,19 +207,19 @@ export async function findReserva(id: string): Promise<Reserva | null> {
 export async function cancelReserva(date: string, id: string) {
   const r = await kv.hget<Reserva>(K.day(date), id);
   if (!r) return false;
-  await kv.hdel(K.day(date), id);
-  await kv.del(K.rid(id));
+  await Promise.all([kv.hdel(K.day(date), id), kv.del(K.rid(id)), kv.hdel(K.caja(date), id)]);
+  bust(TAG.day(date));
   await touch();
   return true;
 }
 
 // ---------- turnos fijos (todas las semanas) ----------
 export async function addFijo(input: { courtId: string; date: string; start: number; name: string; phone: string }) {
-  const { config, courts } = await getSite();
+  const { config, courts } = await getSiteFresh();
   const c = courts.find((x) => x.id === input.courtId);
   if (!c) throw new BookingError("La cancha no existe.");
   const ids = conflictIds(c, courts);
-  const fijos = await getFijos();
+  const fijos = await getFijosFresh();
   const dow = dayOfWeek(input.date);
   if (fijos.some((f) => f.dow === dow && ids.has(f.courtId) && f.start < input.start + c.dur && input.start < f.start + f.dur)) {
     throw new BookingError("Ya hay un turno fijo en ese día y horario.");
@@ -201,24 +231,55 @@ export async function addFijo(input: { courtId: string; date: string; start: num
     if (clash) throw new BookingError(`El ${d.split("-").reverse().join("/")} ese horario ya lo tiene ${clash.name}. Cancelá ese turno primero.`);
   }
   const f: Fijo = { id: newId("f"), courtId: c.id, dow, start: input.start, dur: c.dur, name: input.name, phone: input.phone, since: input.date };
-  await kv.set("fijos", [...fijos, f]);
+  await saveFijos([...fijos, f]);
   await touch();
   return f;
 }
 
 export async function removeFijo(id: string) {
-  await kv.set("fijos", (await getFijos()).filter((f) => f.id !== id));
+  await saveFijos((await getFijosFresh()).filter((f) => f.id !== id));
   await touch();
+}
+
+/** Consumo habitual de un turno fijo: se precarga solo cada semana */
+export async function setFijoItems(id: string, items: Item[]) {
+  const fijos = await getFijosFresh();
+  if (!fijos.some((f) => f.id === id)) return false;
+  await saveFijos(fijos.map((f) => (f.id === id ? { ...f, items } : f)));
+  await touch();
+  return true;
 }
 
 /** Libera un turno fijo solo por un día */
 export async function skipFijo(date: string, id: string) {
   await kv.sadd(K.skip(date), id);
+  bust(TAG.day(date));
+  await touch();
+}
+
+// ---------- caja ----------
+export const DEFAULT_PRODUCTS: Product[] = [
+  { id: "p_cerveza", name: "Cerveza", price: 0, active: true },
+  { id: "p_gaseosa", name: "Gaseosa", price: 0, active: true },
+  { id: "p_agua", name: "Agua", price: 0, active: true },
+  { id: "p_isotonica", name: "Bebida isotónica", price: 0, active: true },
+];
+export const getProductsFresh = async () => (await kv.get<Product[]>("products")) ?? DEFAULT_PRODUCTS;
+export const getProducts = () => cached(["products"], [TAG.products], 3600, getProductsFresh);
+export async function saveProducts(products: Product[]) {
+  await kv.set("products", products);
+  bust(TAG.products);
+}
+
+/** Caja de todos los turnos de un día: bebidas y quién pagó */
+export const getCajaDay = (date: string) => kv.hgetall<Caja>(K.caja(date));
+export async function saveCaja(date: string, bookingId: string, caja: Caja) {
+  await kv.hset(K.caja(date), bookingId, caja);
   await touch();
 }
 
 // ---------- imágenes (logo y portada) ----------
-export type ImgKind = "logo" | "cover";
-export const getImage = (kind: ImgKind) => kv.get<string>(`img:${kind}`);
-export const saveImage = (kind: ImgKind, dataUrl: string) => kv.set(`img:${kind}`, dataUrl);
-export const deleteImage = (kind: ImgKind) => kv.del(`img:${kind}`);
+/** kind: "logo", "cover" o "foto_<id>" (fotos de las canchas) */
+export const getImage = (kind: string) => kv.get<string>(`img:${kind}`);
+export const saveImage = (kind: string, dataUrl: string) => kv.set(`img:${kind}`, dataUrl);
+export const deleteImage = (kind: string) => kv.del(`img:${kind}`);

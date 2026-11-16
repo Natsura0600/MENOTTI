@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
-import { isAdmin } from "./auth";
+import { getRole } from "./auth";
 import { BookingError } from "./data";
 import { kv } from "./kv";
+import type { Role } from "./types";
 
 export const ok = (data: unknown = { ok: true }) => NextResponse.json(data);
 export const fail = (message: string, status = 400) => NextResponse.json({ error: message }, { status });
 
-/** Devuelve una respuesta de error si no hay sesión de administrador */
-export async function denied() {
-  return (await isAdmin()) ? null : fail("Tenés que iniciar sesión.", 401);
+/**
+ * Devuelve una respuesta de error si quien llama no tiene permiso.
+ * Por defecto exige al dueño; con "staff" también deja pasar al empleado.
+ */
+export async function denied(min: Role = "admin") {
+  const role = await getRole();
+  if (!role) return fail("Tenés que iniciar sesión.", 401);
+  if (min === "admin" && role !== "admin") return fail("Eso solo lo puede hacer el dueño.", 403);
+  return null;
 }
 
 export function handle(e: unknown) {

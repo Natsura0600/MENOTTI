@@ -4,7 +4,7 @@ import { isValidDate } from "@/lib/time";
 
 export async function POST(req: Request) {
   try {
-    const no = await denied();
+    const no = await denied("staff");
     if (no) return no;
     const b = await req.json().catch(() => ({}));
     const type = String(b.type);
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const no = await denied();
+    const no = await denied("staff");
     if (no) return no;
     const b = await req.json().catch(() => ({}));
     const id = str(b.id, 40);

@@ -1,18 +1,19 @@
 import { denied, fail, handle, ok } from "@/lib/api";
-import { dayBookings, getLive, getSite } from "@/lib/data";
+import { dayBookings, getCajaDay, getLive, getSite } from "@/lib/data";
 import { isValidDate } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
+/** Agenda de un día para el panel: turnos + caja de cada turno. Siempre directo de la base. */
 export async function GET(req: Request) {
   try {
-    const no = await denied();
+    const no = await denied("staff");
     if (no) return no;
     const date = new URL(req.url).searchParams.get("date") ?? "";
     if (!isValidDate(date)) return fail("Fecha inválida.");
     const [{ config, courts }, live] = await Promise.all([getSite(), getLive()]);
-    const bookings = await dayBookings(date, courts, config.nightFrom);
-    return ok({ date, v: live.v, courts, bookings });
+    const [bookings, caja] = await Promise.all([dayBookings(date, courts, config.nightFrom, true), getCajaDay(date)]);
+    return ok({ date, v: live.v, courts, bookings, caja });
   } catch (e) {
     return handle(e);
   }

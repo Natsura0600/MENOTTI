@@ -1,6 +1,8 @@
+import { after } from "next/server";
 import { fail, handle, ok, str } from "@/lib/api";
 import { cancelReserva, findReserva, getSite } from "@/lib/data";
-import { minutesUntil } from "@/lib/time";
+import { notifyAll } from "@/lib/push";
+import { cap, fmtLong, hm, minutesUntil, todayStr } from "@/lib/time";
 
 /** El jugador cancela su reserva con el link que recibió */
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -12,6 +14,14 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const { config } = await getSite();
     if (minutesUntil(r.date, r.start) < config.cancelHours * 60) return fail("Ya no se puede cancelar online. Escribinos por WhatsApp.");
     await cancelReserva(r.date, r.id);
+    after(() =>
+      notifyAll({
+        title: "Turno cancelado",
+        body: `${r.name} canceló · ${r.date === todayStr() ? "Hoy" : cap(fmtLong(r.date))} ${hm(r.start)} hs. El horario quedó libre.`,
+        url: `/panel?d=${r.date}`,
+        tag: r.id,
+      }),
+    );
     return ok();
   } catch (e) {
     return handle(e);

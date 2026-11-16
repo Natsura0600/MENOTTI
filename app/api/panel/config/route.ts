@@ -1,5 +1,5 @@
 import { cleanPhone, denied, handle, int, ok, str } from "@/lib/api";
-import { getSite, saveConfig } from "@/lib/data";
+import { getSiteFresh, saveConfig } from "@/lib/data";
 import type { Config } from "@/lib/types";
 
 /** Guarda los textos de la web y las reglas de reserva. Solo cambia los campos que llegan. */
@@ -8,7 +8,7 @@ export async function PUT(req: Request) {
     const no = await denied();
     if (no) return no;
     const b = await req.json().catch(() => ({}));
-    const { config: cur } = await getSite();
+    const { config: cur } = await getSiteFresh();
     const has = (k: keyof Config) => b[k] !== undefined;
     const text = (k: keyof Config, max: number) => (has(k) ? str(b[k], max) : (cur[k] as string));
     const next: Config = {
@@ -30,6 +30,13 @@ export async function PUT(req: Request) {
       daysAhead: has("daysAhead") ? int(b.daysAhead, 1, 60, cur.daysAhead) : cur.daysAhead,
       cancelHours: has("cancelHours") ? int(b.cancelHours, 0, 72, cur.cancelHours) : cur.cancelHours,
       open: has("open") ? !!b.open : cur.open,
+      // de las fotos solo se puede cambiar el texto y el orden; subir y borrar va por /api/panel/imagen
+      photos: Array.isArray(b.photos)
+        ? (b.photos as Record<string, unknown>[]).flatMap((p) => {
+            const old = (cur.photos ?? []).find((x) => x.id === String(p.id));
+            return old ? [{ ...old, caption: str(p.caption, 60) }] : [];
+          })
+        : (cur.photos ?? []),
     };
     await saveConfig(next);
     return ok({ config: next });

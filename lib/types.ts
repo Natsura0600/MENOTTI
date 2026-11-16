@@ -16,6 +16,17 @@ export type Court = {
 };
 
 export type Service = { title: string; text: string };
+export type Photo = { id: string; caption: string; v: number };
+
+/** Usuarios del panel: el dueño ve todo; el empleado solo los turnos y la caja de cada turno */
+export type Role = "admin" | "staff";
+
+// ---------- caja ----------
+export type Product = { id: string; name: string; price: number; active: boolean };
+/** Producto cargado en un turno. Guarda nombre y precio del momento, así un cambio de precios no altera lo ya cobrado. */
+export type Item = { id: string; name: string; price: number; qty: number };
+export type Player = { name: string; paid: boolean };
+export type Caja = { items: Item[]; players: Player[]; drinksPaid: boolean; note: string };
 
 export type Config = {
   name: string;
@@ -35,6 +46,7 @@ export type Config = {
   open: boolean; // reservas online habilitadas
   logoV: number;
   coverV: number;
+  photos: Photo[]; // fotos de las canchas que se ven en la web
 };
 
 export type Origin = "web" | "manual" | "bloqueo" | "fijo";
@@ -53,9 +65,9 @@ export type Reserva = {
   createdAt: number;
 };
 
-export type Fijo = { id: string; courtId: string; dow: number; start: number; dur: number; name: string; phone: string; since: string };
+export type Fijo = { id: string; courtId: string; dow: number; start: number; dur: number; name: string; phone: string; since: string; items?: Item[] /* consumo habitual */ };
 
 /** Turno ya resuelto para un día (reserva o turno fijo) */
-export type Booking = { id: string; courtId: string; start: number; dur: number; name: string; phone: string; origin: Origin; price: number };
+export type Booking = { id: string; courtId: string; start: number; dur: number; name: string; phone: string; origin: Origin; price: number; habitual?: Item[] };
 
 export type LastBooking = { name: string; date: string; start: number; at: number };

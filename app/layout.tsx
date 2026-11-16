@@ -1,11 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Barlow_Condensed, Inter } from "next/font/google";
 import { getSiteCached, indexable, siteUrl } from "@/lib/site";
 import { TIPOS } from "@/lib/types";
 import "./globals.css";
-
-const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
-const display = Barlow_Condensed({ subsets: ["latin"], weight: ["700", "800"], style: ["italic"], variable: "--font-display", display: "swap" });
 
 /** Título y descripción salen de lo que el dueño carga en el panel: el SEO se mantiene solo */
 export async function generateMetadata(): Promise<Metadata> {
@@ -26,18 +22,16 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: { title, description, url: "/", siteName: config.name, type: "website", locale: "es_AR" },
     twitter: { card: "summary_large_image", title, description },
     formatDetection: { telephone: false },
+    appleWebApp: { capable: true, title: config.name, statusBarStyle: "black-translucent" },
     verification: process.env.GOOGLE_SITE_VERIFICATION ? { google: process.env.GOOGLE_SITE_VERIFICATION } : undefined,
   };
 }
-export const viewport: Viewport = { themeColor: "#07090a", colorScheme: "dark", width: "device-width", initialScale: 1 };
+export const viewport: Viewport = { themeColor: "#0a0a0a", width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es-AR" className={`${sans.variable} ${display.variable}`}>
-      <body>
-        <a href="#contenido" className="skip">Saltar al contenido</a>
-        {children}
-      </body>
+    <html lang="es-AR">
+      <body>{children}</body>
     </html>
   );
 }

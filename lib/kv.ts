@@ -127,5 +127,21 @@ if (!hasUpstash && process.env.NODE_ENV === "production" && process.env.NEXT_PHA
   console.warn("[M10] Faltan las variables de Upstash: se está usando almacenamiento en memoria. Los datos se pierden al reiniciar.");
 }
 
-export const kv: KV = hasUpstash ? upstash() : memory();
+/** Con KV_DEBUG=1 escribe en el log cada comando que va a la base: sirve para medir el consumo */
+function counted(base: KV): KV {
+  if (!process.env.KV_DEBUG) return base;
+  const g = globalThis as unknown as { __kvCount?: number };
+  return new Proxy(base, {
+    get(t, prop: string) {
+      const fn = (t as unknown as Record<string, (...a: unknown[]) => unknown>)[prop];
+      return (...args: unknown[]) => {
+        g.__kvCount = (g.__kvCount ?? 0) + 1;
+        console.log(`[kv ${g.__kvCount}] ${prop} ${typeof args[0] === "string" ? args[0] : JSON.stringify(args[0])}`);
+        return fn(...args);
+      };
+    },
+  });
+}
+
+export const kv: KV = counted(hasUpstash ? upstash() : memory());
 export const usingMemory = !hasUpstash;
