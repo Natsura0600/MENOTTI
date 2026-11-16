@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Booking from "./Booking";
-import { buildFaqs, buildJsonLd, getSiteCached } from "@/lib/site";
+import { buildJsonLd, getSiteCached } from "@/lib/site";
 import { todayStr } from "@/lib/time";
 import { TIPOS } from "@/lib/types";
 import { waLink } from "@/lib/util";
@@ -17,7 +17,6 @@ const WaIcon = ({ size = 22 }: { size?: number }) => (
 
 export default async function Home() {
   const { config, courts } = await getSiteCached();
-  const faqs = buildFaqs(config);
   const photos = config.photos ?? [];
   const logo = config.logoV ? `/api/img/logo?v=${config.logoV}` : "/logo.png";
   const wa = config.whatsapp ? waLink(config.whatsapp, "Hola! Quiero hacer una consulta.") : "";
@@ -29,7 +28,7 @@ export default async function Home() {
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(buildJsonLd(config, courts, faqs)).replace(/</g, "\\u003c") }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(buildJsonLd(config, courts)).replace(/</g, "\\u003c") }} />
       {config.notice && <div className="notice">{config.notice}</div>}
       <header className="top">
         <div className="wrap">
@@ -91,18 +90,6 @@ export default async function Home() {
             )}
           </section>
         )}
-
-        <section className="sec" id="preguntas">
-          <h2 className="title">Preguntas frecuentes</h2>
-          <div className="faq">
-            {faqs.map((f, i) => (
-              <details key={i}>
-                <summary>{f.q}</summary>
-                <p className="mut">{f.a}</p>
-              </details>
-            ))}
-          </div>
-        </section>
 
         <section className="sec">
           <h2 className="title">Dónde estamos</h2>

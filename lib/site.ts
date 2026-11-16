@@ -19,26 +19,8 @@ export function siteUrl(): string {
 /** Solo el sitio real se indexa: las previews y el desarrollo local quedan fuera de Google */
 export const indexable = () => !process.env.VERCEL_ENV || process.env.VERCEL_ENV === "production";
 
-export type Faq = { q: string; a: string };
-
-export function buildFaqs(config: Config): Faq[] {
-  const out: Faq[] = [
-    { q: "¿Cómo reservo una cancha?", a: "Elegís el tamaño de la cancha, el día y el horario, dejás tu nombre y tu WhatsApp, y listo: la reserva queda confirmada en el momento." },
-  ];
-  if (config.bookingNote) out.push({ q: "¿Cómo se paga el turno?", a: config.bookingNote });
-  out.push(
-    {
-      q: "¿Puedo cancelar mi reserva?",
-      a: `Sí. Desde la página de tu reserva podés cancelar hasta ${config.cancelHours} ${config.cancelHours === 1 ? "hora" : "horas"} antes del turno. Con menos tiempo, escribinos por WhatsApp.`,
-    },
-    { q: "¿Con cuánta anticipación puedo reservar?", a: `Podés reservar desde hoy y hasta ${config.daysAhead} días para adelante.` },
-    { q: "¿Cuántos turnos puedo reservar por día?", a: "Hasta 2 turnos por día desde la web. Si necesitás más (torneos, eventos), escribinos por WhatsApp." },
-  );
-  return out;
-}
-
-/** Datos estructurados para Google (negocio local deportivo + preguntas frecuentes) */
-export function buildJsonLd(config: Config, courts: Court[], faqs: Faq[]) {
+/** Datos estructurados para Google (negocio local deportivo) */
+export function buildJsonLd(config: Config, courts: Court[]) {
   const url = siteUrl();
   const active = courts.filter((c) => c.active);
   const prices = active.flatMap((c) => [c.priceDay, c.priceNight]).filter((p) => p > 0);
@@ -78,11 +60,6 @@ export function buildJsonLd(config: Config, courts: Court[], faqs: Faq[]) {
     "@graph": [
       business,
       { "@type": "WebSite", "@id": `${url}/#web`, url, name: config.name, inLanguage: "es-AR" },
-      {
-        "@type": "FAQPage",
-        "@id": `${url}/#faq`,
-        mainEntity: faqs.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
-      },
     ],
   };
 }
