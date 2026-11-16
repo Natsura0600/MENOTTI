@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "./auth";
 import { BookingError } from "./data";
+import { kv } from "./kv";
 
 export const ok = (data: unknown = { ok: true }) => NextResponse.json(data);
 export const fail = (message: string, status = 400) => NextResponse.json({ error: message }, { status });
@@ -22,3 +23,16 @@ export const int = (n: unknown, min: number, max: number, def: number) => {
   const v = Math.round(Number(n));
   return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : def;
 };
+
+/**
+ * Límite simple por IP para frenar bots: como mucho `max` pedidos cada `seconds`.
+ * Devuelve true si hay que rechazar el pedido.
+ */
+export async function tooMany(req: Request, bucket: string, max: number, seconds: number) {
+  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "sin-ip";
+  const key = `rl:${bucket}:${ip}:${Math.floor(Date.now() / (seconds * 1000))}`;
+  const n = Number((await kv.get<number>(key)) ?? 0);
+  if (n >= max) return true;
+  await kv.set(key, n + 1, { ex: seconds });
+  return false;
+}

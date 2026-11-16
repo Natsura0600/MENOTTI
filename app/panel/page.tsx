@@ -5,7 +5,7 @@ import { getSite } from "@/lib/data";
 import { todayStr } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Panel · M10", robots: { index: false } };
+export const metadata = { title: "Panel", robots: { index: false, follow: false } };
 
 export default async function PanelPage() {
   if (!(await isAdmin())) return <Login first={!(await getAuth())} />;
