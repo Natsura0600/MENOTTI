@@ -25,8 +25,33 @@ export default function Booking({ tipos, today, daysAhead, open, wa }: { tipos: 
     try {
       setName(localStorage.getItem("m10_name") ?? "");
       setPhone(localStorage.getItem("m10_phone") ?? "");
-      setMine(JSON.parse(localStorage.getItem("m10_mine") ?? "[]"));
     } catch {}
+    // "Tu reserva" solo se muestra si sigue en pie: si la canceló el jugador o el complejo, o ya pasó, se borra
+    let alive = true;
+    const check = async () => {
+      let saved: Mine[] = [];
+      try {
+        saved = JSON.parse(localStorage.getItem("m10_mine") ?? "[]");
+      } catch {}
+      if (!Array.isArray(saved) || saved.length === 0) return alive && setMine([]);
+      try {
+        const { ids } = await api<{ ids: string[] }>("/api/reservas/vigentes", "POST", { items: saved.map(({ id, token }) => ({ id, token })) });
+        const ok = saved.filter((m) => ids.includes(m.id));
+        if (ok.length !== saved.length) localStorage.setItem("m10_mine", JSON.stringify(ok));
+        if (alive) setMine(ok);
+      } catch {
+        // sin conexión: no se muestra nada dudoso y se reintenta al volver a la pestaña
+      }
+    };
+    check();
+    const onShow = () => document.visibilityState === "visible" && check();
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("pageshow", onShow);
+    return () => {
+      alive = false;
+      document.removeEventListener("visibilitychange", onShow);
+      window.removeEventListener("pageshow", onShow);
+    };
   }, []);
 
   // Las tarjetas de "Nuestras canchas" pueden dejar elegido un tamaño
