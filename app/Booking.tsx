@@ -3,12 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import { addDays, dayNum, fmtDow, fmtLong, hm, cap } from "@/lib/time";
 import { api, errMsg, money } from "@/lib/util";
 
-type TipoInfo = { tipo: number; count: number; from: number };
+type CourtInfo = { id: string; name: string; tipo: number; detail: string; from: number };
 type Slot = { start: number; dur: number; price: number; free: boolean };
-type Mine = { id: string; token: string; label: string; date?: string; start?: number; tipo?: number };
+type Mine = { id: string; token: string; label: string; date?: string; start?: number; courtId?: string };
 
-export default function Booking({ tipos, today, daysAhead, open, wa }: { tipos: TipoInfo[]; today: string; daysAhead: number; open: boolean; wa: string }) {
-  const [tipo, setTipo] = useState<number | null>(tipos.length === 1 ? tipos[0].tipo : null);
+export default function Booking({ courts, today, daysAhead, open, wa }: { courts: CourtInfo[]; today: string; daysAhead: number; open: boolean; wa: string }) {
+  const [courtId, setCourtId] = useState<string | null>(courts.length === 1 ? courts[0].id : null);
+  const court = courts.find((c) => c.id === courtId) ?? null;
   const [date, setDate] = useState(today);
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [slot, setSlot] = useState<Slot | null>(null);
@@ -55,38 +56,38 @@ export default function Booking({ tipos, today, daysAhead, open, wa }: { tipos: 
   }, []);
 
   useEffect(() => {
-    if (!tipo) return;
+    if (!courtId) return;
     setSlots(null);
     setSlot(null);
     let alive = true;
-    api<{ slots: Slot[] }>(`/api/disponibilidad?date=${date}&tipo=${tipo}`)
+    api<{ slots: Slot[] }>(`/api/disponibilidad?date=${date}&court=${courtId}`)
       .then((r) => alive && setSlots(r.slots))
       .catch(() => alive && setSlots([]));
     return () => {
       alive = false;
     };
-  }, [tipo, date]);
+  }, [courtId, date]);
 
   const go = (el: HTMLElement | null) => setTimeout(() => el?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
 
   async function reservar() {
-    if (!slot || !tipo) return;
+    if (!slot || !court) return;
     setErr("");
     setBusy(true);
     try {
-      const r = await api<{ id: string; token: string }>("/api/reservas", "POST", { tipo, date, start: slot.start, name, phone });
+      const r = await api<{ id: string; token: string }>("/api/reservas", "POST", { courtId: court.id, date, start: slot.start, name, phone });
       try {
         localStorage.setItem("m10_name", name);
         localStorage.setItem("m10_phone", phone);
-        const label = `F${tipo} · ${cap(fmtLong(date))} · ${hm(slot.start)}`;
-        localStorage.setItem("m10_mine", JSON.stringify([{ id: r.id, token: r.token, label, date, start: slot.start, tipo }, ...mine].slice(0, 5)));
+        const label = `${court.name} · ${cap(fmtLong(date))} · ${hm(slot.start)}`;
+        localStorage.setItem("m10_mine", JSON.stringify([{ id: r.id, token: r.token, label, date, start: slot.start, courtId: court.id }, ...mine].slice(0, 5)));
       } catch {}
       location.href = `/reserva/${r.id}?t=${r.token}&nuevo=1`;
     } catch (e) {
       setErr(errMsg(e));
       setBusy(false);
       // si se ocupó, refrescamos los horarios
-      api<{ slots: Slot[] }>(`/api/disponibilidad?date=${date}&tipo=${tipo}`).then((r) => setSlots(r.slots)).catch(() => {});
+      api<{ slots: Slot[] }>(`/api/disponibilidad?date=${date}&court=${courtId}`).then((r) => setSlots(r.slots)).catch(() => {});
     }
   }
 
@@ -100,7 +101,7 @@ export default function Booking({ tipos, today, daysAhead, open, wa }: { tipos: 
 
   const days = Array.from({ length: daysAhead + 1 }, (_, i) => addDays(today, i));
   const freeCount = slots?.filter((s) => s.free).length ?? 0;
-  const ownCount = slots?.filter((s) => mine.some((m) => m.date === date && m.start === s.start && m.tipo === tipo)).length ?? 0;
+  const ownCount = slots?.filter((s) => mine.some((m) => m.date === date && m.start === s.start && m.courtId === courtId)).length ?? 0;
 
   return (
     <div>
@@ -112,13 +113,14 @@ export default function Booking({ tipos, today, daysAhead, open, wa }: { tipos: 
       ))}
 
       <div className="step">
-        <h3><span className="num">1</span> ¿De cuánto es la cancha?</h3>
+        <h3><span className="num">1</span> ¿Qué cancha querés?</h3>
         <div className="opts">
-          {tipos.map((t) => (
-            <button key={t.tipo} className={"opt" + (tipo === t.tipo ? " on" : "")} onClick={() => { setTipo(t.tipo); go(hoursRef.current); }}>
-              <b>Fútbol {t.tipo}</b>
+          {courts.map((t) => (
+            <button key={t.id} className={"opt" + (courtId === t.id ? " on" : "")} onClick={() => { setCourtId(t.id); go(hoursRef.current); }}>
+              <b>{t.name}</b>
               <small>
-                {t.count > 1 ? `${t.count} canchas` : "1 cancha"}
+                Fútbol {t.tipo}
+                {t.detail && ` · ${t.detail}`}
                 {t.from > 0 && ` · desde ${money(t.from)}`}
               </small>
             </button>
@@ -126,7 +128,7 @@ export default function Booking({ tipos, today, daysAhead, open, wa }: { tipos: 
         </div>
       </div>
 
-      {tipo && (
+      {court && (
         <div className="step" ref={hoursRef}>
           <h3><span className="num">2</span> ¿Qué día y a qué hora?</h3>
           <div className="days">
@@ -149,7 +151,7 @@ export default function Booking({ tipos, today, daysAhead, open, wa }: { tipos: 
               <div className="hours">
                 {slots.map((s) => {
                   // El horario que ya reservaste desde este celular se ve como tuyo, no como libre
-                  const own = mine.some((m) => m.date === date && m.start === s.start && m.tipo === tipo);
+                  const own = mine.some((m) => m.date === date && m.start === s.start && m.courtId === courtId);
                   return (
                     <button key={s.start} disabled={!s.free || own} className={"hour" + (own ? " own" : slot?.start === s.start ? " on" : "")} onClick={() => { setSlot(s); setErr(""); go(formRef.current); }}>
                       <b>{hm(s.start)}</b>
@@ -163,11 +165,11 @@ export default function Booking({ tipos, today, daysAhead, open, wa }: { tipos: 
         </div>
       )}
 
-      {tipo && slot && (
+      {court && slot && (
         <div className="step" ref={formRef}>
           <h3><span className="num">3</span> Tus datos</h3>
           <div className="sum">
-            ⚽ Fútbol {tipo} · {hm(slot.start)} hs
+            ⚽ {court.name} · Fútbol {court.tipo} · {hm(slot.start)} hs
             <small>{cap(fmtLong(date))}{slot.price ? ` · ${money(slot.price)}` : ""}</small>
           </div>
           {err && <div className="err">{err}</div>}

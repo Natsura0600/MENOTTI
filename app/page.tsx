@@ -3,7 +3,6 @@ import Link from "next/link";
 import Booking from "./Booking";
 import { buildJsonLd, getSiteCached } from "@/lib/site";
 import { todayStr } from "@/lib/time";
-import { TIPOS } from "@/lib/types";
 import { waLink } from "@/lib/util";
 
 export const dynamic = "force-dynamic";
@@ -20,11 +19,8 @@ export default async function Home() {
   const photos = config.photos ?? [];
   const logo = config.logoV ? `/api/img/logo?v=${config.logoV}` : "/logo.png";
   const wa = config.whatsapp ? waLink(config.whatsapp, "Hola! Quiero hacer una consulta.") : "";
-  const tipos = TIPOS.map((tipo) => {
-    const mine = courts.filter((c) => c.active && c.tipo === tipo);
-    const prices = mine.map((c) => c.priceDay).filter((p) => p > 0);
-    return { tipo, count: mine.length, from: prices.length ? Math.min(...prices) : 0 };
-  }).filter((t) => t.count > 0);
+  // El cliente elige la cancha puntual (Cancha 1, 2, 3...), no el tamaño
+  const canchas = courts.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name, tipo: c.tipo, detail: c.detail, from: c.priceDay }));
 
   return (
     <>
@@ -53,7 +49,7 @@ export default async function Home() {
       <main className="wrap">
         <section className="sec" id="reservar" style={{ scrollMarginTop: 70 }}>
           <h2 className="title">Reservá tu cancha</h2>
-          <Booking tipos={tipos} today={todayStr()} daysAhead={config.daysAhead} open={config.open} wa={wa} />
+          <Booking courts={canchas} today={todayStr()} daysAhead={config.daysAhead} open={config.open} wa={wa} />
         </section>
 
         {photos.length > 0 && (
