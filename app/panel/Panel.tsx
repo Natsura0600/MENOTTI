@@ -600,6 +600,18 @@ function shrink(file: File, max: number, quality = 0.82): Promise<string> {
 // ======================= AJUSTES =======================
 function Ajustes({ config, hasStaff: initialStaff, onSaved, say }: { config: Config; hasStaff: boolean; onSaved: (c: Config) => void; say: (m: string) => void }) {
   const [hasStaff, setHasStaff] = useState(initialStaff);
+  const [wipePw, setWipePw] = useState("");
+  async function maint(action: "recargar" | "turnos" | "todo") {
+    if (action === "turnos" && !confirm("Se borran TODAS las reservas, los turnos fijos y la caja. No se puede deshacer. ¿Seguro?")) return;
+    if (action === "todo" && !confirm("Se borra TODO: reservas, turnos fijos, caja, canchas, precios, textos, productos y fotos. Solo quedan las contraseñas. No se puede deshacer. ¿Seguro?")) return;
+    setErr("");
+    try {
+      await api("/api/panel/mantenimiento", "POST", { action, password: wipePw });
+      location.reload();
+    } catch (e) {
+      setErr(errMsg(e));
+    }
+  }
   const [staffPw, setStaffPw] = useState("");
   async function saveStaff(value: string) {
     setErr("");
@@ -691,6 +703,20 @@ function Ajustes({ config, hasStaff: initialStaff, onSaved, say }: { config: Con
         <div className="field"><label>Nueva (mínimo 6)</label><input type="password" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} /></div>
         <button className="btn ghost full" disabled={!pw.current || pw.next.length < 6} onClick={changePw}>Cambiar contraseña</button>
         <p className="hint">Al cambiarla se cierran las sesiones en los otros celulares.</p>
+      </div>
+      <div className="card" style={{ marginTop: 14 }}>
+        <h3 style={{ marginBottom: 4 }}>Mantenimiento</h3>
+        <p className="hint" style={{ margin: "0 0 12px" }}>
+          Para vaciar el sistema usá estos botones, no borres los datos directamente en Upstash: el sitio guarda una copia para andar rápido y seguiría mostrando lo viejo.
+        </p>
+        <button className="btn ghost full" onClick={() => maint("recargar")}>Recargar datos desde la base</button>
+        <p className="hint" style={{ marginBottom: 16 }}>Usalo si tocaste algo en Upstash y el sitio sigue mostrando lo anterior.</p>
+        <div className="field"><label>Tu contraseña (para poder borrar)</label><input type="password" autoComplete="off" value={wipePw} onChange={(e) => setWipePw(e.target.value)} /></div>
+        <div className="stack">
+          <button className="btn danger full" disabled={!wipePw} onClick={() => maint("turnos")}>Borrar reservas, fijos y caja</button>
+          <button className="btn danger full" disabled={!wipePw} onClick={() => maint("todo")}>Borrar todo y dejar de fábrica</button>
+        </div>
+        <p className="hint">El primero deja canchas, precios, textos, productos y fotos. El segundo borra también eso. Las contraseñas no se tocan.</p>
       </div>
     </div>
   );

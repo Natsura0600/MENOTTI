@@ -1,4 +1,4 @@
-import { bust, cached, TAG } from "./cache";
+import { bust, bustAll, cached, TAG } from "./cache";
 import { kv } from "./kv";
 import { addDays, dayOfWeek, minutesUntil, todayStr } from "./time";
 import { TIPOS, type Booking, type Caja, type Config, type Court, type Fijo, type Item, type LastBooking, type Product, type Reserva, type Tipo } from "./types";
@@ -313,3 +313,23 @@ export async function saveCaja(date: string, bookingId: string, caja: Caja) {
 export const getImage = (kind: string) => kv.get<string>(`img:${kind}`);
 export const saveImage = (kind: string, dataUrl: string) => kv.set(`img:${kind}`, dataUrl);
 export const deleteImage = (kind: string) => kv.del(`img:${kind}`);
+
+// ---------- mantenimiento ----------
+/**
+ * Vacía datos de la base y descarta la caché, todo junto (borrar solo en Upstash deja la copia en caché a la vista).
+ * - "turnos": reservas, turnos fijos y caja. Quedan canchas, precios, textos, productos, fotos y usuarios.
+ * - "todo": además vuelve canchas, textos, productos y fotos a los valores de fábrica. Los usuarios no se tocan.
+ */
+export async function wipe(scope: "turnos" | "todo") {
+  const prefixes = ["res:", "caja:", "fskip:", "rid:", "mx:"];
+  const single = ["fijos", "last", "live", "ver"];
+  if (scope === "todo") {
+    prefixes.push("img:");
+    single.push("config", "courts", "products", "push");
+  }
+  const found = (await Promise.all(prefixes.map((p) => kv.keys(p)))).flat();
+  const all = [...new Set([...found, ...single])];
+  for (let i = 0; i < all.length; i += 200) await kv.del(...all.slice(i, i + 200));
+  bustAll();
+  return found.length;
+}
