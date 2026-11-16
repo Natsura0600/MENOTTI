@@ -117,7 +117,10 @@ export default function Booking({ tipos, today, daysAhead, open, wa }: { tipos: 
           {tipos.map((t) => (
             <button key={t.tipo} className={"opt" + (tipo === t.tipo ? " on" : "")} onClick={() => { setTipo(t.tipo); go(hoursRef.current); }}>
               <b>Fútbol {t.tipo}</b>
-              {t.from > 0 && <small>desde {money(t.from)}</small>}
+              <small>
+                {t.count > 1 ? `${t.count} canchas` : "1 cancha"}
+                {t.from > 0 && ` · desde ${money(t.from)}`}
+              </small>
             </button>
           ))}
         </div>

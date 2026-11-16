@@ -46,6 +46,12 @@ export function newId(prefix: string) {
   const rnd = crypto.getRandomValues(new Uint8Array(9));
   return prefix + "_" + Array.from(rnd, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 14);
 }
+/** El id de una reserva lleva su fecha (r_20261118_xxxx): así se la encuentra sin guardar un índice aparte */
+const reservaId = (date: string) => `r_${date.replace(/-/g, "")}_${newId("x").slice(2, 14)}`;
+function dateOfId(id: string): string | null {
+  const m = /^r_(\d{4})(\d{2})(\d{2})_/.exec(id);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
 export function newToken() {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -59,7 +65,7 @@ export async function getSiteFresh(): Promise<{ config: Config; courts: Court[] 
   return { config: { ...DEFAULT_CONFIG, ...((c as Partial<Config>) ?? {}) }, courts };
 }
 /** Igual, pero desde la caché: no gasta comandos mientras nadie cambie nada. Para todo lo que solo muestra. */
-export const getSite = () => cached(["site"], [TAG.site], 3600, getSiteFresh);
+export const getSite = () => cached(["site"], [TAG.site], 86400, getSiteFresh);
 
 export async function saveConfig(c: Config) {
   await kv.set("config", c);
@@ -89,40 +95,54 @@ export function isBusy(bookings: Booking[], ids: Set<string>, start: number, dur
 }
 
 // ---------- cambios en vivo (el panel pregunta si cambió algo) ----------
-export async function touch() {
-  await kv.set("ver", "v" + Date.now() + Math.floor(Math.random() * 1000));
+/**
+ * "Versión" de los datos: cambia cada vez que algo se modifica. No vive en la base sino en la caché:
+ * touch() la invalida y la próxima consulta genera una nueva. Marcar un cambio no gasta comandos.
+ */
+const getVersion = () => cached(["ver"], [TAG.live], 21600, async () => "v" + Date.now() + Math.floor(Math.random() * 1000));
+/** Última reserva hecha por la web (para que el panel suene y avise). Solo se lee de la base cuando entra una nueva. */
+const getLast = () => cached(["last"], [TAG.last], 86400, async () => (await kv.get<LastBooking>("last")) ?? null);
+
+export async function touch(last?: LastBooking) {
+  if (last) {
+    await kv.set("last", last, { ex: 60 * 60 * 24 });
+    bust(TAG.last);
+  }
   bust(TAG.live);
 }
-/** El panel pregunta esto cada minuto: sale de la caché y solo toca la base cuando hubo un cambio */
-export const getLive = () =>
-  cached(["live"], [TAG.live], 600, async () => {
-    const [v, last] = await kv.mget<unknown>(["ver", "last"]);
-    return { v: v == null ? "0" : String(v), last: (last as LastBooking | null) ?? null };
-  });
+/** El panel pregunta esto cada minuto: sale de la caché */
+export async function getLive() {
+  const [v, last] = await Promise.all([getVersion(), getLast()]);
+  return { v, last: last && Date.now() - last.at < 86400000 ? last : null };
+}
 
 // ---------- turnos ----------
 export async function getFijosFresh(): Promise<Fijo[]> {
   return (await kv.get<Fijo[]>("fijos")) ?? [];
 }
-export const getFijos = () => cached(["fijos"], [TAG.fijos], 3600, getFijosFresh);
+export const getFijos = () => cached(["fijos"], [TAG.fijos], 86400, getFijosFresh);
 async function saveFijos(fijos: Fijo[]) {
   await kv.set("fijos", fijos);
   bust(TAG.fijos);
 }
 
+
 type DayRaw = { res: Reserva[]; skips: string[] };
-async function dayRawFresh(date: string): Promise<DayRaw> {
-  const [res, skips] = await Promise.all([kv.hgetall<Reserva>(K.day(date)), kv.smembers(K.skip(date))]);
+/** Los "fijos liberados" de un día solo se leen si existe algún turno fijo: sin fijos no hay nada que liberar */
+async function dayRawFresh(date: string, hasFijos: boolean): Promise<DayRaw> {
+  const [res, skips] = await Promise.all([kv.hgetall<Reserva>(K.day(date)), hasFijos ? kv.smembers(K.skip(date)) : []]);
   return { res: Object.values(res), skips };
 }
-const dayRaw = (date: string) => cached(["day", date], [TAG.day(date)], 300, () => dayRawFresh(date));
+const dayRaw = (date: string, hasFijos: boolean) => cached(["day", date, hasFijos ? "f" : "-"], [TAG.day(date)], 3600, () => dayRawFresh(date, hasFijos));
 
 /**
  * Turnos de un día (reservas + turnos fijos).
- * fresh=true lee directo de la base (para reservar y para el panel); si no, usa la caché (web pública).
+ * fresh=true lee directo de la base (solo al reservar, con el candado puesto); si no, usa la caché,
+ * que se invalida en el acto cada vez que se reserva, se cancela o se libera un turno.
  */
 export async function dayBookings(date: string, courts: Court[], nightFrom: number, fresh = false): Promise<Booking[]> {
-  const [{ res, skips }, fijos] = await Promise.all([fresh ? dayRawFresh(date) : dayRaw(date), fresh ? getFijosFresh() : getFijos()]);
+  const fijos = await (fresh ? getFijosFresh() : getFijos());
+  const { res, skips } = await (fresh ? dayRawFresh(date, fijos.length > 0) : dayRaw(date, fijos.length > 0));
   const out: Booking[] = res.map((r) => ({ id: r.id, courtId: r.courtId, start: r.start, dur: r.dur, name: r.name, phone: r.phone, origin: r.origin, price: r.price }));
   const dow = dayOfWeek(date);
   for (const f of fijos) {
@@ -157,7 +177,7 @@ type NewReserva = { courtId?: string; tipo?: Tipo; date: string; start: number; 
  * asigna la primera cancha libre de ese tamaño. Desde el panel se elige la cancha.
  */
 export async function createReserva(input: NewReserva, staff = false): Promise<Reserva> {
-  const { config, courts } = await getSiteFresh();
+  const { config, courts } = await getSite();
   if (!staff) {
     if (!config.open) throw new BookingError("Las reservas online están pausadas. Escribinos por WhatsApp.");
     const today = todayStr();
@@ -175,7 +195,7 @@ export async function createReserva(input: NewReserva, staff = false): Promise<R
     const c = candidates.find((k) => slotsOf(k).includes(input.start) && !isBusy(bookings, conflictIds(k, courts), input.start, k.dur));
     if (!c) throw new BookingError("Ese turno ya está ocupado. Elegí otro horario.");
     const r: Reserva = {
-      id: newId("r"),
+      id: reservaId(input.date),
       courtId: c.id,
       date: input.date,
       start: input.start,
@@ -188,27 +208,36 @@ export async function createReserva(input: NewReserva, staff = false): Promise<R
       createdAt: Date.now(),
     };
     await kv.hset(K.day(r.date), r.id, r);
-    await kv.set(K.rid(r.id), r.date, { ex: 60 * 60 * 24 * 200 });
-    if (r.origin === "web") {
-      const last: LastBooking = { name: r.name, date: r.date, start: r.start, at: Date.now() };
-      await kv.set("last", last, { ex: 60 * 60 * 24 });
-    }
     bust(TAG.day(r.date));
-    await touch();
+    await touch(r.origin === "web" ? { name: r.name, date: r.date, start: r.start, at: Date.now() } : undefined);
     return r;
   });
 }
 
+/** Fecha de una reserva a partir de su id (las reservas viejas la tienen en un índice aparte) */
+async function dateOf(id: string): Promise<string | null> {
+  const d = dateOfId(id) ?? (await kv.get<string>(K.rid(id)));
+  return d ? String(d) : null;
+}
+/** Busca una reserva para mostrarla (desde la caché del día: normalmente no gasta comandos) */
 export async function findReserva(id: string): Promise<Reserva | null> {
-  const date = await kv.get<string>(K.rid(id));
-  return date ? kv.hget<Reserva>(K.day(String(date)), id) : null;
+  const date = await dateOf(id);
+  if (!date) return null;
+  return (await dayRaw(date, (await getFijos()).length > 0)).res.find((r) => r.id === id) ?? null;
+}
+/** Igual, pero directo de la base: para cancelar */
+export async function findReservaFresh(id: string): Promise<Reserva | null> {
+  const date = await dateOf(id);
+  return date ? kv.hget<Reserva>(K.day(date), id) : null;
 }
 
-export async function cancelReserva(date: string, id: string) {
-  const r = await kv.hget<Reserva>(K.day(date), id);
+/** Cancela una reserva. Si ya se la leyó de la base (known), no la vuelve a leer. */
+export async function cancelReserva(date: string, id: string, known?: Reserva) {
+  const r = known ?? (await kv.hget<Reserva>(K.day(date), id));
   if (!r) return false;
-  await Promise.all([kv.hdel(K.day(date), id), kv.del(K.rid(id)), kv.hdel(K.caja(date), id)]);
-  bust(TAG.day(date));
+  const had = !!(await getCajaDay(date))[id];
+  await Promise.all([kv.hdel(K.day(date), id), had ? kv.hdel(K.caja(date), id) : null, dateOfId(id) ? null : kv.del(K.rid(id))]);
+  bust(TAG.day(date), TAG.caja(date));
   await touch();
   return true;
 }
@@ -265,16 +294,17 @@ export const DEFAULT_PRODUCTS: Product[] = [
   { id: "p_isotonica", name: "Bebida isotónica", price: 0, active: true },
 ];
 export const getProductsFresh = async () => (await kv.get<Product[]>("products")) ?? DEFAULT_PRODUCTS;
-export const getProducts = () => cached(["products"], [TAG.products], 3600, getProductsFresh);
+export const getProducts = () => cached(["products"], [TAG.products], 86400, getProductsFresh);
 export async function saveProducts(products: Product[]) {
   await kv.set("products", products);
   bust(TAG.products);
 }
 
-/** Caja de todos los turnos de un día: bebidas y quién pagó */
-export const getCajaDay = (date: string) => kv.hgetall<Caja>(K.caja(date));
+/** Caja de todos los turnos de un día: bebidas y quién pagó (con caché; se invalida al guardar) */
+export const getCajaDay = (date: string) => cached(["caja", date], [TAG.caja(date)], 3600, () => kv.hgetall<Caja>(K.caja(date)));
 export async function saveCaja(date: string, bookingId: string, caja: Caja) {
   await kv.hset(K.caja(date), bookingId, caja);
+  bust(TAG.caja(date));
   await touch();
 }
 

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRole } from "./auth";
 import { BookingError } from "./data";
-import { kv } from "./kv";
 import type { Role } from "./types";
 
 export const ok = (data: unknown = { ok: true }) => NextResponse.json(data);
@@ -33,13 +32,20 @@ export const int = (n: unknown, min: number, max: number, def: number) => {
 
 /**
  * Límite simple por IP para frenar bots: como mucho `max` pedidos cada `seconds`.
- * Devuelve true si hay que rechazar el pedido.
+ * Se lleva en la memoria del servidor (no gasta comandos de la base). Devuelve true si hay que rechazar.
+ * El freno de fondo sigue siendo el máximo de 2 turnos por teléfono por día, que sí se controla en la base.
  */
-export async function tooMany(req: Request, bucket: string, max: number, seconds: number) {
+const hits = new Map<string, { n: number; until: number }>();
+export function tooMany(req: Request, bucket: string, max: number, seconds: number) {
   const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "sin-ip";
-  const key = `rl:${bucket}:${ip}:${Math.floor(Date.now() / (seconds * 1000))}`;
-  const n = Number((await kv.get<number>(key)) ?? 0);
-  if (n >= max) return true;
-  await kv.set(key, n + 1, { ex: seconds });
-  return false;
+  const key = `${bucket}:${ip}`;
+  const now = Date.now();
+  if (hits.size > 5000) for (const [k, v] of hits) if (v.until < now) hits.delete(k);
+  const h = hits.get(key);
+  if (!h || h.until < now) {
+    hits.set(key, { n: 1, until: now + seconds * 1000 });
+    return false;
+  }
+  h.n++;
+  return h.n > max;
 }

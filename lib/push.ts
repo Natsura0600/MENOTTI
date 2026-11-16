@@ -1,4 +1,5 @@
 import webpush from "web-push";
+import { bust, cached, TAG } from "./cache";
 import { kv } from "./kv";
 import type { Role } from "./types";
 
@@ -36,6 +37,9 @@ export function validSub(s: unknown): s is Sub {
   return !!x && typeof x.endpoint === "string" && /^https:\/\//.test(x.endpoint) && x.endpoint.length < 1000 && typeof x.keys?.p256dh === "string" && typeof x.keys?.auth === "string";
 }
 
+/** Celulares suscriptos (con caché: avisar una reserva no gasta comandos) */
+const devices = () => cached(["push"], [TAG.push], 86400, () => kv.hgetall<Stored>(KEY));
+
 export async function subscribe(sub: Sub, role: Role) {
   const all = await kv.hgetall<Stored>(KEY);
   const id = await idOf(sub.endpoint);
@@ -45,10 +49,12 @@ export async function subscribe(sub: Sub, role: Role) {
     if (oldest) await kv.hdel(KEY, oldest[0]);
   }
   await kv.hset(KEY, id, { sub: { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } }, role, at: Date.now() } satisfies Stored);
+  bust(TAG.push);
 }
 
 export async function unsubscribe(endpoint: string) {
   await kv.hdel(KEY, await idOf(endpoint));
+  bust(TAG.push);
 }
 
 async function send(id: string, s: Stored, msg: PushMsg) {
@@ -58,8 +64,10 @@ async function send(id: string, s: Stored, msg: PushMsg) {
   } catch (e) {
     const code = (e as { statusCode?: number }).statusCode;
     // 404/410: el celular desinstaló la app o quitó el permiso
-    if (code === 404 || code === 410) await kv.hdel(KEY, id);
-    else console.error("[push]", code ?? e);
+    if (code === 404 || code === 410) {
+      await kv.hdel(KEY, id);
+      bust(TAG.push);
+    } else console.error("[push]", code ?? e);
     return false;
   }
 }
@@ -68,7 +76,7 @@ async function send(id: string, s: Stored, msg: PushMsg) {
 export async function notifyAll(msg: PushMsg) {
   if (!pushReady) return 0;
   setup();
-  const all = await kv.hgetall<Stored>(KEY);
+  const all = await devices();
   const done = await Promise.all(Object.entries(all).map(([id, s]) => send(id, s, msg)));
   return done.filter(Boolean).length;
 }
@@ -78,6 +86,6 @@ export async function notifyOne(endpoint: string, msg: PushMsg) {
   if (!pushReady) return false;
   setup();
   const id = await idOf(endpoint);
-  const s = await kv.hget<Stored>(KEY, id);
+  const s = (await devices())[id];
   return s ? send(id, s, msg) : false;
 }

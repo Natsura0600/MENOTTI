@@ -16,7 +16,7 @@ export type Auth = { hash: string; sv: number; staff?: { hash: string; sv: numbe
 /** Directo de la base: para iniciar sesión y cambiar contraseñas */
 export const getAuthFresh = () => kv.get<Auth>("auth");
 /** Desde la caché: para verificar la sesión en cada pedido sin gastar comandos */
-export const getAuth = () => cached(["auth"], [TAG.auth], 3600, async () => (await getAuthFresh()) ?? null);
+export const getAuth = () => cached(["auth"], [TAG.auth], 86400, async () => (await getAuthFresh()) ?? null);
 export async function saveAuth(a: Auth, opts?: { nx?: boolean }) {
   const done = await kv.set("auth", a, opts);
   bust(TAG.auth);
@@ -29,11 +29,14 @@ async function secret() {
   if (secretBytes) return secretBytes;
   let s: string | null = process.env.AUTH_SECRET ?? null;
   if (!s) {
-    s = await kv.get<string>("secret");
-    if (!s) {
-      await kv.set("secret", "s_" + newToken() + newToken(), { nx: true });
-      s = await kv.get<string>("secret");
-    }
+    s = await cached(["secret"], [TAG.secret], 86400 * 30, async () => {
+      let v = await kv.get<string>("secret");
+      if (!v) {
+        await kv.set("secret", "s_" + newToken() + newToken(), { nx: true });
+        v = await kv.get<string>("secret");
+      }
+      return v;
+    });
   }
   secretBytes = new TextEncoder().encode(String(s));
   return secretBytes;

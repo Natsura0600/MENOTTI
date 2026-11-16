@@ -204,7 +204,7 @@ function Agenda({ today, initialDate, say, admin, products, vapidKey }: AgendaPr
           onCaja={(id, c, m) => {
             setData((d) => (d ? { ...d, caja: { ...d.caja, [id]: c } } : d));
             say(m);
-            load();
+            // la caja guardada ya vino en la respuesta: no hace falta volver a pedir la agenda
           }}
           onClose={() => setSel(null)}
           onDone={(m) => {

@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     if (phone.length < 10) return fail("Poné tu WhatsApp con código de área (ej: 11 5555 0000).");
     if (!isValidDate(date) || !Number.isInteger(start) || !TIPOS.includes(tipo)) return fail("Elegí un horario válido.");
     // Como mucho 8 reservas cada 10 minutos desde la misma conexión
-    if (await tooMany(req, "reserva", 8, 600)) return fail("Hiciste muchas reservas seguidas. Esperá unos minutos o escribinos por WhatsApp.", 429);
+    if (tooMany(req, "reserva", 8, 600)) return fail("Hiciste muchas reservas seguidas. Esperá unos minutos o escribinos por WhatsApp.", 429);
     const r = await createReserva({ tipo, date, start, name, phone, origin: "web" });
     // El aviso al celular del complejo sale después de responderle al cliente: no lo hace esperar
     after(() =>

@@ -13,7 +13,11 @@ export const TAG = {
   live: "live",
   auth: "auth",
   products: "products",
+  push: "push",
+  last: "last",
+  secret: "secret",
   day: (date: string) => `day-${date}`,
+  caja: (date: string) => `caja-${date}`,
 };
 
 /** Lee con caché. `seconds` es solo una red de seguridad: lo normal es que se invalide con bust(). */

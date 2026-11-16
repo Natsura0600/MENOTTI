@@ -1,5 +1,5 @@
 import { denied, fail, handle, int, ok, str } from "@/lib/api";
-import { getCajaDay, getFijos, getProductsFresh, saveCaja, setFijoItems } from "@/lib/data";
+import { getCajaDay, getFijos, getProducts, saveCaja, setFijoItems } from "@/lib/data";
 import { isValidDate } from "@/lib/time";
 import type { Caja, Item } from "@/lib/types";
 
@@ -19,7 +19,7 @@ export async function PUT(req: Request) {
     const id = str(b.id, 40);
     if (!isValidDate(date) || !id) return fail("Turno inválido.");
 
-    const [products, day] = await Promise.all([getProductsFresh(), getCajaDay(date)]);
+    const [products, day] = await Promise.all([getProducts(), getCajaDay(date)]);
     const known = new Map<string, { name: string; price: number }>();
     for (const p of products) known.set(p.id, { name: p.name, price: p.price });
     // en un turno fijo, el consumo habitual también es válido aunque el producto ya no esté en la lista
