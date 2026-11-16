@@ -355,7 +355,7 @@ function Canchas({ courts: initial, onSaved }: { courts: Court[]; onSaved: (c: C
           </div>
         </div>
       ))}
-      <button className="btn ghost full" onClick={() => setCourts([...courts, { id: "", name: `Cancha ${courts.length + 1}`, tipo: 5, detail: "", dur: 60, open: 540, close: 1440, priceDay: 0, priceNight: 0, shares: [], active: true }])}>
+      <button className="btn ghost full" onClick={() => setCourts([...courts, { id: "", name: `Cancha ${courts.length + 1}`, tipo: 7, detail: "", dur: 60, open: 540, close: 1440, priceDay: 0, priceNight: 0, shares: [], active: true }])}>
         + Agregar cancha
       </button>
       <div className="savebar">

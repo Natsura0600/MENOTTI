@@ -1,12 +1,12 @@
 import { kv } from "./kv";
 import { addDays, dayOfWeek, minutesUntil, todayStr } from "./time";
-import type { Booking, Config, Court, Fijo, LastBooking, Reserva, Tipo } from "./types";
+import { TIPOS, type Booking, type Config, type Court, type Fijo, type LastBooking, type Reserva, type Tipo } from "./types";
 
 // ---------- valores iniciales (después se cambian desde el panel) ----------
 export const DEFAULT_CONFIG: Config = {
   name: "M10 Canchas de Fútbol",
   slogan: "Tenemos historia, tenemos presente",
-  description: "Alquiler de canchas de fútbol 5, 7, 9 y 11. Reservá tu turno online en un minuto.",
+  description: "Alquiler de canchas de fútbol 7, 9 y 11. Reservá tu turno online en un minuto.",
   address: "",
   mapsUrl: "",
   whatsapp: "",
@@ -15,7 +15,7 @@ export const DEFAULT_CONFIG: Config = {
   notice: "",
   bookingNote: "El turno se paga en el complejo. Si no podés venir, avisá con tiempo.",
   services: [
-    { title: "Canchas 5, 7, 9 y 11", text: "Elegí el tamaño que necesites y reservá online." },
+    { title: "Canchas 7, 9 y 11", text: "Elegí el tamaño que necesites y reservá online." },
     { title: "Eventos y cumpleaños", text: "Festejá con nosotros. Consultanos por WhatsApp." },
     { title: "Alquiler del espacio deportivo", text: "Para torneos, escuelitas y empresas." },
     { title: "Estacionamiento", text: "Vení tranquilo, tenés lugar para dejar el auto." },
@@ -29,7 +29,7 @@ export const DEFAULT_CONFIG: Config = {
 };
 
 const court = (id: string, name: string, tipo: Tipo): Court => ({ id, name, tipo, detail: "", dur: 60, open: 9 * 60, close: 24 * 60, priceDay: 0, priceNight: 0, shares: [], active: true });
-export const DEFAULT_COURTS: Court[] = [court("c1", "Cancha 1", 5), court("c2", "Cancha 2", 5), court("c3", "Cancha de 7", 7), court("c4", "Cancha de 9", 9), court("c5", "Cancha de 11", 11)];
+export const DEFAULT_COURTS: Court[] = [court("c3", "Cancha de 7", 7), court("c4", "Cancha de 9", 9), court("c5", "Cancha de 11", 11)];
 
 const K = {
   day: (date: string) => `res:${date}`,
@@ -51,7 +51,9 @@ export function newToken() {
 /** Lee configuración y canchas en un solo comando */
 export async function getSite(): Promise<{ config: Config; courts: Court[] }> {
   const [c, k] = await kv.mget<unknown>(["config", "courts"]);
-  return { config: { ...DEFAULT_CONFIG, ...((c as Partial<Config>) ?? {}) }, courts: (k as Court[] | null) ?? DEFAULT_COURTS };
+  // Se descartan canchas guardadas de un tamaño que ya no se ofrece (ej: fútbol 5)
+  const courts = ((k as Court[] | null) ?? DEFAULT_COURTS).filter((x) => TIPOS.includes(x.tipo));
+  return { config: { ...DEFAULT_CONFIG, ...((c as Partial<Config>) ?? {}) }, courts };
 }
 export const saveConfig = (c: Config) => kv.set("config", c);
 export async function saveCourts(courts: Court[]) {

@@ -13,11 +13,11 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 const STEPS = [
-  { title: "Elegí tu cancha", text: "Fútbol 5, 7, 9 u 11, según cuántos sean." },
+  { title: "Elegí tu cancha", text: "Fútbol 7, 9 u 11, según cuántos sean." },
   { title: "Día y horario", text: "Ves en tiempo real qué turnos están libres." },
   { title: "Confirmá y listo", text: "Sin llamadas ni esperas. La reserva queda al instante." },
 ];
-const JUGADORES: Record<number, string> = { 5: "5 contra 5", 7: "7 contra 7", 9: "9 contra 9", 11: "11 contra 11" };
+const JUGADORES: Record<number, string> = { 7: "7 contra 7", 9: "9 contra 9", 11: "11 contra 11" };
 
 function Logo({ src, custom, size, alt, priority }: { src: string; custom: boolean; size: number; alt: string; priority?: boolean }) {
   // El logo propio (subido desde el panel) ya viene liviano; el de fábrica lo optimiza Next (WebP/AVIF a medida)

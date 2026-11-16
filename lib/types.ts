@@ -1,5 +1,5 @@
-export type Tipo = 5 | 7 | 9 | 11;
-export const TIPOS: Tipo[] = [5, 7, 9, 11];
+export type Tipo = 7 | 9 | 11;
+export const TIPOS: Tipo[] = [7, 9, 11];
 
 export type Court = {
   id: string;

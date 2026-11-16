@@ -16,7 +16,7 @@ export async function PUT(req: Request) {
       return {
         id: str(c.id, 40) || newId("c"),
         name: str(c.name, 40) || "Cancha",
-        tipo: TIPOS.includes(tipo) ? tipo : 5,
+        tipo: TIPOS.includes(tipo) ? tipo : 7,
         detail: str(c.detail, 60),
         dur: int(c.dur, 30, 180, 60),
         open,
