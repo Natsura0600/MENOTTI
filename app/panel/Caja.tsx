@@ -50,11 +50,16 @@ export function TurnoCaja({ b, court, date, initial, saved, products, onSaved }:
   };
   const setN = (n: number) => {
     n = Math.max(0, Math.min(30, n));
-    setPlayers((p) => (n <= p.length ? p.slice(0, n) : [...p, ...Array.from({ length: n - p.length }, () => ({ name: "", paid: false }))]));
+    setPlayers((p) => {
+      const k = Math.min(n, p.filter((x) => x.paid).length);
+      return Array.from({ length: n }, (_, i) => ({ name: "", paid: i < k }));
+    });
     touch();
   };
-  const upd = (i: number, p: Partial<Player>) => {
-    setPlayers((all) => all.map((x, j) => (j === i ? { ...x, ...p } : x)));
+  /** Sin nombres: solo se anota cuántos pagaron */
+  const setPaid = (k: number) => {
+    k = Math.max(0, Math.min(players.length, k));
+    setPlayers((all) => all.map((_, i) => ({ name: "", paid: i < k })));
     touch();
   };
 
@@ -100,33 +105,32 @@ export function TurnoCaja({ b, court, date, initial, saved, products, onSaved }:
         </label>
       )}
 
-      <h4 style={{ marginTop: 18 }}>¿Quiénes pagaron la cancha?</h4>
+      <h4 style={{ marginTop: 18 }}>¿Cuántos pagaron la cancha?</h4>
       {players.length === 0 ? (
-        <button type="button" className="btn sm dark full" onClick={() => setN(court.tipo * 2)}>Cargar los {court.tipo * 2} jugadores</button>
+        <button type="button" className="btn sm dark full" onClick={() => setN(court.tipo * 2)}>Anotar pagos ({court.tipo * 2} jugadores)</button>
       ) : (
         <>
-          <div className="row" style={{ marginBottom: 10 }}>
-            <button type="button" className="qb" onClick={() => setN(players.length - 1)} aria-label="Un jugador menos">−</button>
-            <span className="qn">{players.length}</span>
-            <button type="button" className="qb" onClick={() => setN(players.length + 1)} aria-label="Un jugador más">+</button>
-            <span className="mut small grow">jugadores{perHead > 0 ? ` · ${money(perHead)} c/u` : ""}</span>
-            <button type="button" className="btn sm ghost" onClick={() => { const all = players.every((p) => p.paid); setPlayers(players.map((p) => ({ ...p, paid: !all }))); touch(); }}>
-              {players.every((p) => p.paid) ? "Ninguno" : "Todos"}
-            </button>
+          <div className="payrow">
+            <button type="button" className="qb" onClick={() => setPaid(t.paidN - 1)} disabled={t.paidN === 0} aria-label="Uno menos pagó">−</button>
+            <div className="paynum">
+              <b>{t.paidN}</b> de {t.n} pagaron
+              {perHead > 0 && <small className="mut">{money(perHead)} cada uno</small>}
+            </div>
+            <button type="button" className="qb" onClick={() => setPaid(t.paidN + 1)} disabled={t.paidN >= t.n} aria-label="Uno más pagó">+</button>
           </div>
-          <div className="players">
-            {players.map((p, i) => (
-              <div className={"player" + (p.paid ? " on" : "")} key={i}>
-                <input type="text" value={p.name} placeholder={`Jugador ${i + 1}`} maxLength={30} onChange={(e) => upd(i, { name: e.target.value })} aria-label={`Nombre del jugador ${i + 1}`} />
-                <button type="button" onClick={() => upd(i, { paid: !p.paid })} aria-pressed={p.paid}>{p.paid ? "✓ Pagó" : "Debe"}</button>
-              </div>
-            ))}
+          <div className="row" style={{ marginTop: 8 }}>
+            <button type="button" className="btn sm ghost grow" onClick={() => setPaid(t.paidN === t.n ? 0 : t.n)}>{t.paidN === t.n ? "Nadie pagó" : "Pagaron todos"}</button>
+            <span className="row" style={{ gap: 6 }}>
+              <span className="mut small">Jugadores</span>
+              <button type="button" className="qb sm" onClick={() => setN(players.length - 1)} aria-label="Un jugador menos">−</button>
+              <button type="button" className="qb sm" onClick={() => setN(players.length + 1)} aria-label="Un jugador más">+</button>
+            </span>
           </div>
         </>
       )}
 
       <div className="field" style={{ marginTop: 14 }}>
-        <input type="text" value={note} maxLength={200} placeholder="Nota (opcional). Ej: Paga Juan por transferencia" onChange={(e) => { setNote(e.target.value); touch(); }} />
+        <input type="text" value={note} maxLength={200} placeholder="Nota (opcional). Ej: falta que pague Juan" onChange={(e) => { setNote(e.target.value); touch(); }} />
       </div>
 
       <div className="tot">
