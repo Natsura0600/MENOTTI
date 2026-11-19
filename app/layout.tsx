@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { getSiteCached, indexable, siteUrl } from "@/lib/site";
 import { TIPOS } from "@/lib/types";
+import WebAnalytics from "./WebAnalytics";
 import "./globals.css";
 
 /** Título y descripción salen de lo que el dueño carga en el panel: el SEO se mantiene solo */
@@ -31,7 +32,10 @@ export const viewport: Viewport = { themeColor: "#0a0a0a", width: "device-width"
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es-AR">
-      <body>{children}</body>
+      <body>
+        {children}
+        <WebAnalytics />
+      </body>
     </html>
   );
 }

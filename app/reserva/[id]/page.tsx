@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import CancelButton from "./CancelButton";
+import TrackReserva from "./TrackReserva";
 import { findReserva, getSite } from "@/lib/data";
 import { cap, fmtLong, hm, minutesUntil } from "@/lib/time";
 import { money, waLink } from "@/lib/util";
@@ -20,6 +21,7 @@ export default async function ReservaPage({ params, searchParams }: { params: Pr
 
   return (
     <main className="wrap" style={{ padding: "36px 16px 60px", maxWidth: 520 }}>
+      {sp.nuevo && court && <TrackReserva id={r.id} cancha={court.name} tipo={court.tipo} />}
       {sp.nuevo && (
         <div className="center" style={{ marginBottom: 22 }}>
           <div className="check">✓</div>
