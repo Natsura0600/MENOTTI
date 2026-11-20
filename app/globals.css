@@ -179,3 +179,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .prodedit { display: grid; gap: 8px; grid-template-columns: 1fr 110px; align-items: center; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
 .prodedit .switch { margin: 0; }
 .prodedit .btn { justify-self: end; }
+
+/* crédito del desarrollador en el pie */
+.credit { margin-top: 8px; font-size: 13px; }
+.credit a { color: var(--txt); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.credit a:hover { color: var(--g); }

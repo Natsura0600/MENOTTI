@@ -129,6 +129,10 @@ export default async function Home() {
       <footer className="foot">
         <div className="wrap">
           {config.name} · <Link href="/panel" style={{ textDecoration: "underline" }}>Administración</Link>
+          <p className="credit">
+            Sitio desarrollado por{" "}
+            <a href="https://picturewebdev.vercel.app" target="_blank" rel="noopener">Picture Web Dev</a>
+          </p>
         </div>
       </footer>
 
