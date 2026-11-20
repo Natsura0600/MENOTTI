@@ -184,3 +184,21 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .credit { margin-top: 8px; font-size: 13px; }
 .credit a { color: var(--txt); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .credit a:hover { color: var(--g); }
+
+/* legales */
+.legal-note { font-size: 13px; color: var(--mut); text-align: center; margin: 4px 0 10px; }
+.legal-note a, .legal-links a { text-decoration: underline; text-underline-offset: 3px; }
+.legal-note a { color: var(--txt); }
+.legal-links { margin-top: 8px; font-size: 13px; }
+.doc { padding: 28px 16px 60px; max-width: 720px; }
+.doc .back { display: inline-block; margin-bottom: 18px; color: var(--mut); font-size: 15px; text-decoration: underline; }
+.doc h1 { font-size: 30px; margin-bottom: 6px; }
+.doc .upd { color: var(--mut); font-size: 14px; margin-bottom: 22px; }
+.doc h2 { font-size: 19px; margin: 26px 0 8px; }
+.doc p, .doc li { color: #d4d4d4; font-size: 16px; line-height: 1.6; }
+.doc p + p { margin-top: 10px; }
+.doc ul { margin: 8px 0 0; padding-left: 22px; }
+.doc li + li { margin-top: 6px; }
+.doc .box { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-top: 10px; }
+.doc .box p { margin: 0; }
+.doc a { color: var(--g); text-decoration: underline; }

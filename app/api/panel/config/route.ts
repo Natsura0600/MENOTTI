@@ -23,6 +23,9 @@ export async function PUT(req: Request) {
       hours: text("hours", 120),
       notice: text("notice", 200),
       bookingNote: text("bookingNote", 300),
+      legalName: text("legalName", 100),
+      cuit: text("cuit", 20).replace(/[^\d-]/g, ""),
+      email: text("email", 100).toLowerCase(),
       services: Array.isArray(b.services)
         ? (b.services as Record<string, unknown>[]).slice(0, 12).map((s) => ({ title: str(s.title, 60), text: str(s.text, 200) })).filter((s) => s.title)
         : cur.services,

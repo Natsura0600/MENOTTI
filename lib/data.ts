@@ -15,6 +15,9 @@ export const DEFAULT_CONFIG: Config = {
   hours: "Todos los días",
   notice: "",
   bookingNote: "El turno se paga en el complejo. Si no podés venir, avisá con tiempo.",
+  legalName: "",
+  cuit: "",
+  email: "",
   services: [
     { title: "Canchas 7, 9 y 11", text: "Elegí el tamaño que necesites y reservá online." },
     { title: "Eventos y cumpleaños", text: "Festejá con nosotros. Consultanos por WhatsApp." },
@@ -41,6 +44,9 @@ const K = {
 };
 
 export class BookingError extends Error {}
+
+/** Turnos que puede sacar un mismo teléfono por día desde la web (también figura en los Términos) */
+export const MAX_TURNOS_DIA = 2;
 
 export function newId(prefix: string) {
   const rnd = crypto.getRandomValues(new Uint8Array(9));
@@ -189,7 +195,7 @@ export async function createReserva(input: NewReserva, staff = false): Promise<R
 
   return withLock(input.date, async () => {
     const bookings = await dayBookings(input.date, courts, config.nightFrom, true);
-    if (!staff && input.phone && bookings.filter((b) => b.phone === input.phone).length >= 2) {
+    if (!staff && input.phone && bookings.filter((b) => b.phone === input.phone).length >= MAX_TURNOS_DIA) {
       throw new BookingError("Ya tenés 2 turnos ese día. Para reservar más escribinos por WhatsApp.");
     }
     const c = candidates.find((k) => slotsOf(k).includes(input.start) && !isBusy(bookings, conflictIds(k, courts), input.start, k.dur));

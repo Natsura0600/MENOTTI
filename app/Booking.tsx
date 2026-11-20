@@ -181,6 +181,10 @@ export default function Booking({ courts, today, daysAhead, open, wa }: { courts
             <label htmlFor="p">Tu WhatsApp</label>
             <input id="p" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Ej: 11 5555 0000" />
           </div>
+          <p className="legal-note">
+            Al reservar aceptás los <a href="/terminos" target="_blank" rel="noopener">Términos</a> y la{" "}
+            <a href="/privacidad" target="_blank" rel="noopener">Política de privacidad</a>.
+          </p>
           <button className="btn big" disabled={busy || name.trim().length < 3 || phone.replace(/\D/g, "").length < 10} onClick={reservar}>
             {busy ? "Reservando…" : "✅ Confirmar reserva"}
           </button>

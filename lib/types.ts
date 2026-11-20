@@ -39,6 +39,9 @@ export type Config = {
   hours: string;
   notice: string; // cartel arriba de todo (vacío = no se muestra)
   bookingNote: string; // se muestra al confirmar la reserva
+  legalName: string; // razón social o titular (páginas legales)
+  cuit: string;
+  email: string; // contacto para consultas y datos personales (opcional)
   services: Service[];
   nightFrom: number; // minuto desde el que rige el precio de noche
   daysAhead: number;

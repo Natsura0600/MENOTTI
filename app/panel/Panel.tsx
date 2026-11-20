@@ -518,6 +518,16 @@ function Web({ config, onSaved }: { config: Config; onSaved: (c: Config) => void
         {T("instagram", "Instagram", "usuario sin @")}
       </div>
       <div className="card" style={{ marginBottom: 14 }}>
+        <h3 style={{ marginBottom: 4 }}>Datos legales</h3>
+        <p className="hint" style={{ margin: "0 0 12px" }}>
+          Aparecen en los <a href="/terminos" target="_blank" style={{ textDecoration: "underline" }}>Términos</a> y en la{" "}
+          <a href="/privacidad" target="_blank" style={{ textDecoration: "underline" }}>Política de privacidad</a>. Si los dejás vacíos, figura el nombre del complejo.
+        </p>
+        {T("legalName", "Razón social o titular", "Ej: Juan Pérez o M10 S.R.L.")}
+        {T("cuit", "CUIT", "Ej: 20-12345678-9")}
+        {T("email", "Email de contacto (opcional)", "Ej: m10canchas@gmail.com", "Para consultas y pedidos sobre datos personales.")}
+      </div>
+      <div className="card" style={{ marginBottom: 14 }}>
         <h3 style={{ marginBottom: 12 }}>Servicios</h3>
         {f.services.map((s, i) => (
           <div key={i} style={{ borderBottom: "1px solid var(--line)", paddingBottom: 12, marginBottom: 12 }}>
