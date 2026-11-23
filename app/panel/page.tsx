@@ -17,7 +17,10 @@ export default async function PanelPage({ searchParams }: { searchParams: Promis
   const initialDate = isValidDate(sp.d) && sp.d >= addDays(today, -60) && sp.d <= addDays(today, 90) ? sp.d : today;
   const admin = role === "admin";
   return (
-    <Panel
+    <>
+      {/* Guarda el ofrecimiento de "instalar app" del navegador por si llega antes de que cargue el panel */}
+      <script dangerouslySetInnerHTML={{ __html: "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__m10Install=e});" }} />
+      <Panel
       initialConfig={config}
       initialCourts={courts}
       initialProducts={products}
@@ -26,6 +29,7 @@ export default async function PanelPage({ searchParams }: { searchParams: Promis
       role={role}
       hasStaff={admin && !!auth?.staff}
       vapidKey={VAPID_PUBLIC}
-    />
+      />
+    </>
   );
 }

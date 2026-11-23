@@ -211,3 +211,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .freq button small { display: block; color: var(--mut); font-size: 13px; margin-top: 2px; }
 .freq button.on { border-color: var(--g); background: #0e2f1b; }
 .freq button.on small { color: #cfe9d8; }
+
+/* panel: cómo instalar la app en Android */
+.install-help { flex-basis: 100%; margin: 6px 0 0; padding-left: 20px; font-size: 14px; color: var(--mut); line-height: 1.5; }
+.install-help li + li { margin-top: 6px; }
+.install-help b { color: var(--txt); }

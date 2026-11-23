@@ -4,6 +4,7 @@ import { addDays, cap, fmtLong, hm, parseHM, DOW_NAMES, dayOfWeek } from "@/lib/
 import { TIPOS, type Booking, type Caja, type Config, type Court, type Photo, type Product, type Role, type Service } from "@/lib/types";
 import { api, errMsg, money, waLink } from "@/lib/util";
 import { cajaOf, Productos, totals, TurnoCaja } from "./Caja";
+import InstallApp from "./InstallApp";
 import Notif from "./Notif";
 
 type Tab = "turnos" | "caja" | "canchas" | "web" | "ajustes";
@@ -147,6 +148,7 @@ function Agenda({ today, initialDate, say, admin, products, vapidKey }: AgendaPr
 
   return (
     <>
+      <InstallApp />
       <Notif vapidKey={vapidKey} say={say} />
       <div className="datebar">
         <button className="btn dark sq" onClick={() => setDate(addDays(date, -1))} aria-label="Día anterior">‹</button>

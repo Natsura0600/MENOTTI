@@ -2,6 +2,12 @@
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
+// Algunos navegadores de Android (como Samsung Internet) solo ofrecen "instalar app" si el service worker
+// atiende la navegación. Se deja pasar directo a la red: no se guarda ninguna página.
+self.addEventListener("fetch", (e) => {
+  if (e.request.mode === "navigate") e.respondWith(fetch(e.request));
+});
+
 self.addEventListener("push", (e) => {
   let d = {};
   try {
