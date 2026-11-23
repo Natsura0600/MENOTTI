@@ -28,6 +28,7 @@ export const DEFAULT_CONFIG: Config = {
   daysAhead: 14,
   cancelHours: 3,
   open: true,
+  fijosWeb: true,
   logoV: 0,
   coverV: 0,
   photos: [],
@@ -47,6 +48,8 @@ export class BookingError extends Error {}
 
 /** Turnos que puede sacar un mismo teléfono por día desde la web (también figura en los Términos) */
 export const MAX_TURNOS_DIA = 2;
+/** Turnos fijos que puede tener un mismo teléfono sacados desde la web (también figura en los Términos) */
+export const MAX_FIJOS_TEL = 2;
 
 export function newId(prefix: string) {
   const rnd = crypto.getRandomValues(new Uint8Array(9));
@@ -155,7 +158,7 @@ export async function dayBookings(date: string, courts: Court[], nightFrom: numb
     if (f.dow !== dow || date < f.since || skips.includes(f.id)) continue;
     const c = courts.find((x) => x.id === f.courtId);
     if (!c) continue;
-    out.push({ id: f.id, courtId: f.courtId, start: f.start, dur: f.dur, name: f.name, phone: f.phone, origin: "fijo", price: priceOf(c, f.start, nightFrom), habitual: f.items });
+    out.push({ id: f.id, courtId: f.courtId, start: f.start, dur: f.dur, name: f.name, phone: f.phone, origin: "fijo", price: priceOf(c, f.start, nightFrom), habitual: f.items, web: f.web });
   }
   return out.sort((a, b) => a.start - b.start);
 }
@@ -249,26 +252,76 @@ export async function cancelReserva(date: string, id: string, known?: Reserva) {
 }
 
 // ---------- turnos fijos (todas las semanas) ----------
-export async function addFijo(input: { courtId: string; date: string; start: number; name: string; phone: string }) {
+/**
+ * Crea un turno fijo. Desde el panel (web=false) lo carga el complejo; desde la web (web=true) lo saca el cliente,
+ * con las mismas reglas que una reserva común más algunas propias, y sin mostrarle datos de otros clientes.
+ */
+export async function addFijo(input: { courtId: string; date: string; start: number; name: string; phone: string }, web = false) {
   const { config, courts } = await getSiteFresh();
-  const c = courts.find((x) => x.id === input.courtId);
+  const c = courts.find((x) => x.id === input.courtId && (!web || x.active));
   if (!c) throw new BookingError("La cancha no existe.");
+  if (web) {
+    if (!config.open) throw new BookingError("Las reservas online están pausadas. Escribinos por WhatsApp.");
+    if (!config.fijosWeb) throw new BookingError("Los turnos fijos se reservan por WhatsApp.");
+    const today = todayStr();
+    if (input.date < today || minutesUntil(input.date, input.start) <= 0) throw new BookingError("Ese horario ya pasó.");
+    if (input.date > addDays(today, config.daysAhead)) throw new BookingError(`Solo se puede reservar hasta ${config.daysAhead} días antes.`);
+    if (!slotsOf(c).includes(input.start)) throw new BookingError("Ese horario no existe. Elegí otro.");
+  }
   const ids = conflictIds(c, courts);
-  const fijos = await getFijosFresh();
   const dow = dayOfWeek(input.date);
-  if (fijos.some((f) => f.dow === dow && ids.has(f.courtId) && f.start < input.start + c.dur && input.start < f.start + f.dur)) {
-    throw new BookingError("Ya hay un turno fijo en ese día y horario.");
+  // Un solo turno fijo se crea a la vez, y también se bloquea el primer día (el de las reservas comunes):
+  // así ni dos fijos ni un fijo y una reserva se quedan con el mismo horario. Orden fijo: primero "fijos", después el día.
+  return withLock("fijos", () => withLock(input.date, async () => {
+    const fijos = await getFijosFresh();
+    if (web && fijos.filter((f) => f.web && f.phone === input.phone).length >= MAX_FIJOS_TEL) {
+      throw new BookingError(`Ya tenés ${MAX_FIJOS_TEL} turnos fijos. Para sumar otro, escribinos por WhatsApp.`);
+    }
+    if (fijos.some((f) => f.dow === dow && ids.has(f.courtId) && f.start < input.start + c.dur && input.start < f.start + f.dur)) {
+      throw new BookingError(web ? "Ese horario ya es turno fijo de otro equipo. Elegí otro." : "Ya hay un turno fijo en ese día y horario.");
+    }
+    for (let w = 0; w * 7 <= config.daysAhead + 7; w++) {
+      const d = addDays(input.date, w * 7);
+      const res = Object.values(await kv.hgetall<Reserva>(K.day(d)));
+      const clash = res.find((r) => ids.has(r.courtId) && r.start < input.start + c.dur && input.start < r.start + r.dur);
+      const fecha = d.split("-").reverse().slice(0, 2).join("/");
+      if (clash) {
+        throw new BookingError(
+          web
+            ? w === 0
+              ? "Ese turno ya está ocupado. Elegí otro horario."
+              : `Ese horario no está libre todas las semanas (el ${fecha} ya está reservado). Elegí otro o reservá solo esta vez.`
+            : `El ${fecha} ese horario ya lo tiene ${clash.name}. Cancelá ese turno primero.`,
+        );
+      }
+    }
+    const f: Fijo = { id: newId("f"), courtId: c.id, dow, start: input.start, dur: c.dur, name: input.name, phone: input.phone, since: input.date };
+    if (web) Object.assign(f, { web: true, token: newToken() });
+    await saveFijos([...fijos, f]);
+    // los días que ya estaban en caché pasan a tener este turno
+    for (let w = 0; w * 7 <= config.daysAhead + 7; w++) bust(TAG.day(addDays(input.date, w * 7)));
+    await touch();
+    return f;
+  }));
+}
+
+/** Un turno fijo por su id (desde la caché) */
+export async function findFijo(id: string) {
+  return (await getFijos()).find((f) => f.id === id) ?? null;
+}
+
+/** Próximas fechas en que se juega un turno fijo (sin las semanas liberadas), desde hoy */
+export async function nextFijoDates(f: Fijo, count: number) {
+  const out: string[] = [];
+  let d = todayStr();
+  while (dayOfWeek(d) !== f.dow) d = addDays(d, 1);
+  if (d < f.since) d = f.since;
+  for (let i = 0; out.length < count && i < count + 8; i++, d = addDays(d, 7)) {
+    if (minutesUntil(d, f.start + f.dur) <= 0) continue;
+    const skips = await kv.smembers(K.skip(d));
+    if (!skips.includes(f.id)) out.push(d);
   }
-  for (let w = 0; w * 7 <= config.daysAhead + 7; w++) {
-    const d = addDays(input.date, w * 7);
-    const res = Object.values(await kv.hgetall<Reserva>(K.day(d)));
-    const clash = res.find((r) => ids.has(r.courtId) && r.start < input.start + c.dur && input.start < r.start + r.dur);
-    if (clash) throw new BookingError(`El ${d.split("-").reverse().join("/")} ese horario ya lo tiene ${clash.name}. Cancelá ese turno primero.`);
-  }
-  const f: Fijo = { id: newId("f"), courtId: c.id, dow, start: input.start, dur: c.dur, name: input.name, phone: input.phone, since: input.date };
-  await saveFijos([...fijos, f]);
-  await touch();
-  return f;
+  return out;
 }
 
 export async function removeFijo(id: string) {

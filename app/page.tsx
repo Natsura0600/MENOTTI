@@ -49,7 +49,7 @@ export default async function Home() {
       <main className="wrap">
         <section className="sec" id="reservar" style={{ scrollMarginTop: 70 }}>
           <h2 className="title">Reservá tu cancha</h2>
-          <Booking courts={canchas} today={todayStr()} daysAhead={config.daysAhead} open={config.open} wa={wa} />
+          <Booking courts={canchas} today={todayStr()} daysAhead={config.daysAhead} open={config.open} fijosWeb={config.fijosWeb} wa={wa} />
         </section>
 
         {photos.length > 0 && (

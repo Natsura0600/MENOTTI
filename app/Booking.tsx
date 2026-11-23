@@ -1,13 +1,14 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { addDays, dayNum, fmtDow, fmtLong, hm, cap } from "@/lib/time";
+import { addDays, cap, dayNum, dayOfWeek, DOW_NAMES, fmtDow, fmtLong, hm } from "@/lib/time";
 import { api, errMsg, money } from "@/lib/util";
 
 type CourtInfo = { id: string; name: string; tipo: number; detail: string; from: number };
 type Slot = { start: number; dur: number; price: number; free: boolean };
-type Mine = { id: string; token: string; label: string; date?: string; start?: number; courtId?: string };
+/** Lo que el celular recuerda de cada reserva. Los turnos fijos guardan día de la semana y desde cuándo. */
+type Mine = { id: string; token: string; label: string; date?: string; start?: number; courtId?: string; dow?: number; since?: string };
 
-export default function Booking({ courts, today, daysAhead, open, wa }: { courts: CourtInfo[]; today: string; daysAhead: number; open: boolean; wa: string }) {
+export default function Booking({ courts, today, daysAhead, open, fijosWeb, wa }: { courts: CourtInfo[]; today: string; daysAhead: number; open: boolean; fijosWeb: boolean; wa: string }) {
   const [courtId, setCourtId] = useState<string | null>(courts.length === 1 ? courts[0].id : null);
   const court = courts.find((c) => c.id === courtId) ?? null;
   const [date, setDate] = useState(today);
@@ -17,6 +18,7 @@ export default function Booking({ courts, today, daysAhead, open, wa }: { courts
   const [phone, setPhone] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [repeat, setRepeat] = useState(false); // true = turno fijo, todas las semanas
   const [mine, setMine] = useState<Mine[]>([]);
   const hoursRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
@@ -75,12 +77,15 @@ export default function Booking({ courts, today, daysAhead, open, wa }: { courts
     setErr("");
     setBusy(true);
     try {
-      const r = await api<{ id: string; token: string }>("/api/reservas", "POST", { courtId: court.id, date, start: slot.start, name, phone });
+      const r = await api<{ id: string; token: string }>("/api/reservas", "POST", { courtId: court.id, date, start: slot.start, name, phone, repeat });
       try {
         localStorage.setItem("m10_name", name);
         localStorage.setItem("m10_phone", phone);
-        const label = `${court.name} · ${cap(fmtLong(date))} · ${hm(slot.start)}`;
-        localStorage.setItem("m10_mine", JSON.stringify([{ id: r.id, token: r.token, label, date, start: slot.start, courtId: court.id }, ...mine].slice(0, 5)));
+        const dow = dayOfWeek(date);
+        const item: Mine = repeat
+          ? { id: r.id, token: r.token, label: `Turno fijo · ${court.name} · todos los ${DOW_NAMES[dow]} ${hm(slot.start)}`, start: slot.start, courtId: court.id, dow, since: date }
+          : { id: r.id, token: r.token, label: `${court.name} · ${cap(fmtLong(date))} · ${hm(slot.start)}`, date, start: slot.start, courtId: court.id };
+        localStorage.setItem("m10_mine", JSON.stringify([item, ...mine].slice(0, 5)));
       } catch {}
       location.href = `/reserva/${r.id}?t=${r.token}&nuevo=1`;
     } catch (e) {
@@ -101,7 +106,11 @@ export default function Booking({ courts, today, daysAhead, open, wa }: { courts
 
   const days = Array.from({ length: daysAhead + 1 }, (_, i) => addDays(today, i));
   const freeCount = slots?.filter((s) => s.free).length ?? 0;
-  const ownCount = slots?.filter((s) => mine.some((m) => m.date === date && m.start === s.start && m.courtId === courtId)).length ?? 0;
+  // Un horario es "tuyo" si lo reservaste para ese día, o si es tu turno fijo de ese día de la semana
+  const isOwn = (start: number) =>
+    mine.some((m) => m.start === start && m.courtId === courtId && (m.dow !== undefined ? m.dow === dayOfWeek(date) && date >= (m.since ?? "") : m.date === date));
+  // (si el horario figura libre, es porque esa semana lo liberaste: ya no es tuyo)
+  const ownCount = slots?.filter((s) => !s.free && isOwn(s.start)).length ?? 0;
 
   return (
     <div>
@@ -151,7 +160,7 @@ export default function Booking({ courts, today, daysAhead, open, wa }: { courts
               <div className="hours">
                 {slots.map((s) => {
                   // El horario que ya reservaste desde este celular se ve como tuyo, no como libre
-                  const own = mine.some((m) => m.date === date && m.start === s.start && m.courtId === courtId);
+                  const own = !s.free && isOwn(s.start);
                   return (
                     <button key={s.start} disabled={!s.free || own} className={"hour" + (own ? " own" : slot?.start === s.start ? " on" : "")} onClick={() => { setSlot(s); setErr(""); go(formRef.current); }}>
                       <b>{hm(s.start)}</b>
@@ -168,10 +177,37 @@ export default function Booking({ courts, today, daysAhead, open, wa }: { courts
       {court && slot && (
         <div className="step" ref={formRef}>
           <h3><span className="num">3</span> Tus datos</h3>
+          {fijosWeb && (
+            <div className="field">
+              <label>¿Cada cuánto?</label>
+              <div className="freq">
+                <button type="button" className={repeat ? "" : "on"} aria-pressed={!repeat} onClick={() => setRepeat(false)}>
+                  <b>Solo esta vez</b>
+                  <small>{cap(fmtLong(date))}</small>
+                </button>
+                <button type="button" className={repeat ? "on" : ""} aria-pressed={repeat} onClick={() => setRepeat(true)}>
+                  <b>Todas las semanas</b>
+                  <small>Turno fijo: todos los {DOW_NAMES[dayOfWeek(date)]}</small>
+                </button>
+              </div>
+            </div>
+          )}
           <div className="sum">
             ⚽ {court.name} · Fútbol {court.tipo} · {hm(slot.start)} hs
-            <small>{cap(fmtLong(date))}{slot.price ? ` · ${money(slot.price)}` : ""}</small>
+            {repeat ? (
+              <small>
+                Todos los {DOW_NAMES[dayOfWeek(date)]}, desde el {fmtLong(date).replace(/^[^,]+, /, "")}
+                {slot.price ? ` · ${money(slot.price)} por turno` : ""}
+              </small>
+            ) : (
+              <small>{cap(fmtLong(date))}{slot.price ? ` · ${money(slot.price)}` : ""}</small>
+            )}
           </div>
+          {repeat && (
+            <p className="hint" style={{ margin: "-4px 0 14px" }}>
+              Cada turno se paga en el complejo. Si una semana no podés venir, lo avisás desde tu reserva y ese día queda libre.
+            </p>
+          )}
           {err && <div className="err">{err}</div>}
           <div className="field">
             <label htmlFor="n">Nombre y apellido</label>
@@ -186,7 +222,7 @@ export default function Booking({ courts, today, daysAhead, open, wa }: { courts
             <a href="/privacidad" target="_blank" rel="noopener">Política de privacidad</a>.
           </p>
           <button className="btn big" disabled={busy || name.trim().length < 3 || phone.replace(/\D/g, "").length < 10} onClick={reservar}>
-            {busy ? "Reservando…" : "✅ Confirmar reserva"}
+            {busy ? "Reservando…" : repeat ? "✅ Confirmar turno fijo" : "✅ Confirmar reserva"}
           </button>
         </div>
       )}

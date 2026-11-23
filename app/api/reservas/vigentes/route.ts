@@ -1,10 +1,11 @@
 import { handle, ok, str } from "@/lib/api";
-import { findReserva } from "@/lib/data";
+import { findFijo, findReserva } from "@/lib/data";
 import { minutesUntil } from "@/lib/time";
 
 /**
  * El celular guarda "mis reservas" para mostrarlas en la portada. Acá pregunta cuáles siguen en pie:
  * las que canceló el jugador, las que canceló el complejo desde el panel y las que ya pasaron no vuelven.
+ * Un turno fijo sigue en pie mientras no lo den de baja.
  */
 export async function POST(req: Request) {
   try {
@@ -13,9 +14,14 @@ export async function POST(req: Request) {
     const found = await Promise.all(
       items.map(async (it) => {
         const id = str(it?.id, 40);
+        const token = String(it?.token ?? "");
+        // Sin el código secreto no se informa nada
+        if (id.startsWith("f_")) {
+          const f = await findFijo(id);
+          return f && f.token === token ? f.id : null;
+        }
         const r = id ? await findReserva(id) : null;
-        // Sin el código secreto de la reserva no se informa nada
-        if (!r || r.token !== String(it?.token ?? "")) return null;
+        if (!r || r.token !== token) return null;
         return minutesUntil(r.date, r.start + r.dur) > 0 ? r.id : null;
       }),
     );

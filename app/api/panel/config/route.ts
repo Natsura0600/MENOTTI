@@ -33,6 +33,7 @@ export async function PUT(req: Request) {
       daysAhead: has("daysAhead") ? int(b.daysAhead, 1, 60, cur.daysAhead) : cur.daysAhead,
       cancelHours: has("cancelHours") ? int(b.cancelHours, 0, 72, cur.cancelHours) : cur.cancelHours,
       open: has("open") ? !!b.open : cur.open,
+      fijosWeb: has("fijosWeb") ? !!b.fijosWeb : cur.fijosWeb,
       // de las fotos solo se puede cambiar el texto y el orden; subir y borrar va por /api/panel/imagen
       photos: Array.isArray(b.photos)
         ? (b.photos as Record<string, unknown>[]).flatMap((p) => {

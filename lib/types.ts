@@ -47,6 +47,7 @@ export type Config = {
   daysAhead: number;
   cancelHours: number;
   open: boolean; // reservas online habilitadas
+  fijosWeb: boolean; // los clientes pueden sacar turno fijo (todas las semanas) desde la web
   logoV: number;
   coverV: number;
   photos: Photo[]; // fotos de las canchas que se ven en la web
@@ -68,9 +69,21 @@ export type Reserva = {
   createdAt: number;
 };
 
-export type Fijo = { id: string; courtId: string; dow: number; start: number; dur: number; name: string; phone: string; since: string; items?: Item[] /* consumo habitual */ };
+export type Fijo = {
+  id: string;
+  courtId: string;
+  dow: number;
+  start: number;
+  dur: number;
+  name: string;
+  phone: string;
+  since: string;
+  items?: Item[]; // consumo habitual
+  web?: boolean; // lo sacó el cliente desde la web
+  token?: string; // código secreto para que el cliente lo administre (solo los de la web)
+};
 
 /** Turno ya resuelto para un día (reserva o turno fijo) */
-export type Booking = { id: string; courtId: string; start: number; dur: number; name: string; phone: string; origin: Origin; price: number; habitual?: Item[] };
+export type Booking = { id: string; courtId: string; start: number; dur: number; name: string; phone: string; origin: Origin; price: number; habitual?: Item[]; web?: boolean };
 
 export type LastBooking = { name: string; date: string; start: number; at: number };

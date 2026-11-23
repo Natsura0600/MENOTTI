@@ -271,7 +271,7 @@ function SlotModal({ sel, date, products, cajaMap, onCaja, onClose, onDone }: Sl
             <div className="card" style={{ background: "#0f0f0f" }}>
               <div style={{ fontSize: 20, fontWeight: 800 }}>{b.name}</div>
               <div className="mut small">
-                {b.origin === "web" ? "Reservó por la web" : b.origin === "fijo" ? `Turno fijo todos los ${DOW_NAMES[dayOfWeek(date)]}` : b.origin === "bloqueo" ? "Horario bloqueado" : "Cargado a mano"}
+                {b.origin === "web" ? "Reservó por la web" : b.origin === "fijo" ? `Turno fijo todos los ${DOW_NAMES[dayOfWeek(date)]}${b.web ? " · lo sacó por la web" : ""}` : b.origin === "bloqueo" ? "Horario bloqueado" : "Cargado a mano"}
                 {b.price > 0 && ` · ${money(b.price)}`}
               </div>
               {b.phone && <div style={{ marginTop: 6 }}>📞 {b.phone}</div>}
@@ -646,7 +646,7 @@ function Ajustes({ config, hasStaff: initialStaff, onSaved, say }: { config: Con
     setBusy(true);
     setErr("");
     try {
-      const r = await api<{ config: Config }>("/api/panel/config", "PUT", { open: f.open, daysAhead: f.daysAhead, cancelHours: f.cancelHours, bookingNote: f.bookingNote, nightFrom: nf });
+      const r = await api<{ config: Config }>("/api/panel/config", "PUT", { open: f.open, fijosWeb: f.fijosWeb, daysAhead: f.daysAhead, cancelHours: f.cancelHours, bookingNote: f.bookingNote, nightFrom: nf });
       onSaved(r.config);
     } catch (e) {
       setErr(errMsg(e));
@@ -673,6 +673,13 @@ function Ajustes({ config, hasStaff: initialStaff, onSaved, say }: { config: Con
           Reservas online abiertas
         </label>
         <p className="hint" style={{ marginBottom: 16 }}>Si lo apagás, la web muestra "Reservá por WhatsApp".</p>
+        <label className="switch" style={{ marginBottom: 6 }}>
+          <input type="checkbox" checked={f.fijosWeb} onChange={(e) => setF({ ...f, fijosWeb: e.target.checked })} />
+          Permitir turnos fijos desde la web
+        </label>
+        <p className="hint" style={{ marginBottom: 16 }}>
+          El cliente puede elegir "Todas las semanas" al reservar. Cada teléfono puede tener hasta 2. Los ves en la agenda como turno fijo.
+        </p>
         <div className="g2">
           <div className="field">
             <label>Días para reservar</label>

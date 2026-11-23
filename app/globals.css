@@ -202,3 +202,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .doc .box { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-top: 10px; }
 .doc .box p { margin: 0; }
 .doc a { color: var(--g); text-decoration: underline; }
+
+/* frecuencia: solo esta vez / todas las semanas */
+.freq { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; }
+.freq button { background: var(--card); border: 2px solid var(--line); border-radius: 14px; padding: 12px 10px; text-align: center; min-height: 72px; }
+.freq button b { display: block; font-size: 16px; }
+.freq button small { display: block; color: var(--mut); font-size: 13px; margin-top: 2px; }
+.freq button.on { border-color: var(--g); background: #0e2f1b; }
+.freq button.on small { color: #cfe9d8; }
