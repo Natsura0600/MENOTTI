@@ -43,7 +43,9 @@ button { cursor: pointer; }
 .top img { height: 48px; width: 48px; border-radius: 10px; object-fit: cover; display: block; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 900; font-style: italic; text-transform: uppercase; }
 .hero { position: relative; text-align: center; padding: 36px 0 40px; background: radial-gradient(ellipse at 50% 0%, #0f3d21 0%, var(--bg) 70%); background-size: cover; background-position: center; }
-.hero.photo::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(0, 0, 0, 0.55), var(--bg)); }
+/* con foto de portada: se enfoca la parte de abajo (donde suelen estar las canchas) y el oscurecido es más suave */
+.hero.photo { background-position: center 80%; }
+.hero.photo::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(0, 0, 0, 0.35), rgba(10, 10, 10, 0.55) 55%, var(--bg)); }
 .hero > * { position: relative; }
 .hero .logo { width: 170px; height: 170px; border-radius: 28px; object-fit: cover; margin: 0 auto 18px; display: block; box-shadow: 0 10px 40px rgba(31, 193, 91, 0.25); }
 .hero h1 { font-size: clamp(28px, 7vw, 44px); }
