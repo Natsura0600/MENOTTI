@@ -216,3 +216,18 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 .install-help { flex-basis: 100%; margin: 6px 0 0; padding-left: 20px; font-size: 14px; color: var(--mut); line-height: 1.5; }
 .install-help li + li { margin-top: 6px; }
 .install-help b { color: var(--txt); }
+
+/* caja: cada bebida con "pagó" y "debe" */
+.prod2 { padding: 9px 0; border-bottom: 1px solid var(--line); }
+.prod2:last-child { border: 0; }
+.prod2-h { margin-bottom: 6px; }
+.prod2-c { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cnt { display: flex; align-items: center; gap: 6px; background: #0f0f0f; border: 2px solid var(--line); border-radius: 12px; padding: 5px 6px 5px 10px; }
+.cnt > span:first-child { flex: 1; font-size: 13px; font-weight: 700; color: var(--mut); text-transform: uppercase; letter-spacing: .04em; }
+.cnt .qb { width: 36px; height: 36px; font-size: 20px; border-radius: 10px; }
+.cnt .qn { min-width: 22px; font-size: 17px; }
+.cnt.pg { border-color: var(--g); }
+.cnt.pg > span:first-child { color: var(--g); }
+.cnt.db { border-color: var(--amber); }
+.cnt.db > span:first-child { color: var(--amber); }
+.tot .sub { font-size: 14px; color: var(--mut); padding-top: 0; }

@@ -229,7 +229,7 @@ function CajaMark({ b, map }: { b: Booking; map: Record<string, Caja> }) {
   const paid = t.total > 0 ? t.falta === 0 : t.n > 0 && t.paidN === t.n;
   return (
     <small className={"cajamark" + (paid ? " ok" : "")}>
-      {t.units > 0 && `🍺 ${t.units} `}
+      {t.units > 0 && `🍺 ${t.units}${t.owedUnits ? ` (${t.owedUnits} deben)` : ""} `}
       {paid ? "✓ Pagado" : t.n > 0 ? `Pagaron ${t.paidN}/${t.n}` : t.falta > 0 ? "Sin cobrar" : ""}
     </small>
   );

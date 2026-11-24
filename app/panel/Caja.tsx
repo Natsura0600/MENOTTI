@@ -10,22 +10,28 @@ export function cajaOf(b: Booking, map: Record<string, Caja>): Caja {
   return map[b.id] ?? (b.habitual?.length ? { ...EMPTY_CAJA, items: b.habitual } : EMPTY_CAJA);
 }
 
-/** Cuentas de un turno: la cancha se reparte entre los jugadores cargados; las bebidas se cobran aparte */
+/** Cuántas unidades de una bebida están pagas (las cajas viejas solo tenían la casilla "bebidas pagadas") */
+export const paidOf = (i: Item, c: Pick<Caja, "drinksPaid">) => Math.min(i.qty, i.paid ?? (c.drinksPaid ? i.qty : 0));
+
+/** Cuentas de un turno: la cancha se reparte entre los jugadores cargados; cada bebida se cobra por separado */
 export function totals(price: number, c: Caja) {
   const drinks = c.items.reduce((s, i) => s + i.price * i.qty, 0);
+  const drinksPaidAmt = c.items.reduce((s, i) => s + i.price * paidOf(i, c), 0);
+  const owedUnits = c.items.reduce((s, i) => s + (i.qty - paidOf(i, c)), 0);
   const n = c.players.length;
   const paidN = c.players.filter((p) => p.paid).length;
   const courtPaid = n ? Math.round((price * paidN) / n) : 0;
-  const cobrado = courtPaid + (c.drinksPaid ? drinks : 0);
+  const cobrado = courtPaid + drinksPaidAmt;
   const total = price + drinks;
-  return { drinks, total, cobrado, falta: Math.max(0, total - cobrado), n, paidN, units: c.items.reduce((s, i) => s + i.qty, 0) };
+  return { drinks, drinksPaidAmt, owedUnits, total, cobrado, falta: Math.max(0, total - cobrado), n, paidN, units: c.items.reduce((s, i) => s + i.qty, 0) };
 }
 
 /** Bebidas y pagos dentro de un turno (lo usan el dueño y el empleado) */
 export function TurnoCaja({ b, court, date, initial, saved, products, onSaved }: { b: Booking; court: Court; date: string; initial: Caja; saved: boolean; products: Product[]; onSaved: (c: Caja, msg: string) => void }) {
-  const [qty, setQty] = useState<Record<string, number>>(() => Object.fromEntries(initial.items.map((i) => [i.id, i.qty])));
+  // por cada bebida: cuántas se pagaron y cuántas se deben
+  const [pagas, setPagas] = useState<Record<string, number>>(() => Object.fromEntries(initial.items.map((i) => [i.id, paidOf(i, initial)])));
+  const [deben, setDeben] = useState<Record<string, number>>(() => Object.fromEntries(initial.items.map((i) => [i.id, i.qty - paidOf(i, initial)])));
   const [players, setPlayers] = useState<Player[]>(initial.players);
-  const [drinksPaid, setDrinksPaid] = useState(initial.drinksPaid);
   const [note, setNote] = useState(initial.note);
   const [dirty, setDirty] = useState(!saved && initial.items.length > 0);
   const [busy, setBusy] = useState(false);
@@ -39,13 +45,21 @@ export function TurnoCaja({ b, court, date, initial, saved, products, onSaved }:
       return { id: p.id, name: old?.name ?? p.name, price: old?.price ?? p.price };
     }),
   ];
-  const items: Item[] = rows.filter((r) => (qty[r.id] ?? 0) > 0).map((r) => ({ ...r, qty: qty[r.id] }));
+  const qtyOf = (id: string) => (pagas[id] ?? 0) + (deben[id] ?? 0);
+  const items: Item[] = rows.filter((r) => qtyOf(r.id) > 0).map((r) => ({ ...r, qty: qtyOf(r.id), paid: pagas[r.id] ?? 0 }));
+  const drinksPaid = items.length > 0 && items.every((i) => i.paid === i.qty);
   const t = totals(b.price, { items, players, drinksPaid, note });
   const perHead = t.n ? Math.round(b.price / t.n) : 0;
   const touch = () => setDirty(true);
 
-  const bump = (id: string, d: number) => {
-    setQty((q) => ({ ...q, [id]: Math.max(0, Math.min(999, (q[id] ?? 0) + d)) }));
+  const bump = (set: typeof setPagas, id: string, d: number) => {
+    set((q) => ({ ...q, [id]: Math.max(0, Math.min(999, (q[id] ?? 0) + d)) }));
+    touch();
+  };
+  /** Pasa a "pagó" todo lo que se debía */
+  const payAll = () => {
+    setPagas((p) => Object.fromEntries(rows.map((r) => [r.id, (p[r.id] ?? 0) + (deben[r.id] ?? 0)])));
+    setDeben({});
     touch();
   };
   const setN = (n: number) => {
@@ -67,7 +81,7 @@ export function TurnoCaja({ b, court, date, initial, saved, products, onSaved }:
     setBusy(true);
     setErr("");
     try {
-      const r = await api<{ caja: Caja }>("/api/panel/caja", "PUT", { date, id: b.id, items: items.map(({ id, qty }) => ({ id, qty })), players, drinksPaid, note, habitual });
+      const r = await api<{ caja: Caja }>("/api/panel/caja", "PUT", { date, id: b.id, items: items.map(({ id, qty, paid }) => ({ id, qty, paid })), players, note, habitual });
       setDirty(false);
       onSaved(r.caja, habitual ? "Guardado. Estas bebidas se cargan solas todas las semanas ✓" : "Caja guardada ✓");
     } catch (e) {
@@ -85,24 +99,39 @@ export function TurnoCaja({ b, court, date, initial, saved, products, onSaved }:
         <p className="mut small">Todavía no hay productos cargados. El dueño los agrega en la pestaña Caja.</p>
       ) : (
         <div className="prods">
-          {rows.map((r) => (
-            <div className="prod" key={r.id}>
-              <div className="grow">
-                <b>{r.name}</b>
-                {r.price > 0 && <small className="mut"> {money(r.price)}</small>}
+          {rows.map((r) => {
+            const pg = pagas[r.id] ?? 0;
+            const db = deben[r.id] ?? 0;
+            return (
+              <div className="prod2" key={r.id}>
+                <div className="prod2-h">
+                  <b>{r.name}</b>
+                  {r.price > 0 && <small className="mut"> {money(r.price)}</small>}
+                  {pg + db > 0 && <small className="mut"> · {pg + db} en total</small>}
+                </div>
+                <div className="prod2-c">
+                  <div className={"cnt" + (pg ? " pg" : "")}>
+                    <span>Pagó</span>
+                    <button type="button" className="qb" onClick={() => bump(setPagas, r.id, -1)} disabled={!pg} aria-label={`Una ${r.name} pagada menos`}>−</button>
+                    <span className="qn">{pg}</span>
+                    <button type="button" className="qb" onClick={() => bump(setPagas, r.id, 1)} aria-label={`Agregar ${r.name} pagada`}>+</button>
+                  </div>
+                  <div className={"cnt" + (db ? " db" : "")}>
+                    <span>Debe</span>
+                    <button type="button" className="qb" onClick={() => bump(setDeben, r.id, -1)} disabled={!db} aria-label={`Una ${r.name} sin pagar menos`}>−</button>
+                    <span className="qn">{db}</span>
+                    <button type="button" className="qb" onClick={() => bump(setDeben, r.id, 1)} aria-label={`Agregar ${r.name} sin pagar`}>+</button>
+                  </div>
+                </div>
               </div>
-              <button type="button" className="qb" onClick={() => bump(r.id, -1)} disabled={!qty[r.id]} aria-label={`Quitar ${r.name}`}>−</button>
-              <span className="qn">{qty[r.id] ?? 0}</span>
-              <button type="button" className="qb" onClick={() => bump(r.id, 1)} aria-label={`Agregar ${r.name}`}>+</button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
-      {items.length > 0 && (
-        <label className="switch" style={{ margin: "10px 0 0" }}>
-          <input type="checkbox" checked={drinksPaid} onChange={(e) => { setDrinksPaid(e.target.checked); touch(); }} />
-          Bebidas pagadas{t.drinks > 0 ? ` (${money(t.drinks)})` : ""}
-        </label>
+      {t.owedUnits > 0 && (
+        <button type="button" className="btn sm ghost full" style={{ marginTop: 10 }} onClick={payAll}>
+          Ya pagaron todas las bebidas ({money(t.drinks - t.drinksPaidAmt)})
+        </button>
       )}
 
       <h4 style={{ marginTop: 18 }}>¿Cuántos pagaron la cancha?</h4>
@@ -136,6 +165,7 @@ export function TurnoCaja({ b, court, date, initial, saved, products, onSaved }:
       <div className="tot">
         {b.price > 0 && <div><span>Cancha</span><b>{money(b.price)}</b></div>}
         {t.drinks > 0 && <div><span>Bebidas ({t.units})</span><b>{money(t.drinks)}</b></div>}
+        {t.owedUnits > 0 && <div className="sub"><span>· deben {t.owedUnits} {t.owedUnits === 1 ? "bebida" : "bebidas"}</span><b style={{ color: "var(--amber)" }}>{money(t.drinks - t.drinksPaidAmt)}</b></div>}
         {t.total > 0 && <div className="big"><span>Total</span><b>{money(t.total)}</b></div>}
         {t.total > 0 && <div><span>Cobrado{t.n ? ` · pagaron ${t.paidN} de ${t.n}` : ""}</span><b style={{ color: "var(--g)" }}>{money(t.cobrado)}</b></div>}
         {t.falta > 0 && <div><span>Falta cobrar</span><b style={{ color: "var(--amber)" }}>{money(t.falta)}</b></div>}

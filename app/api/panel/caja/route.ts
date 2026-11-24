@@ -30,15 +30,18 @@ export async function PUT(req: Request) {
     for (const raw of (Array.isArray(b.items) ? b.items : []).slice(0, 60) as Record<string, unknown>[]) {
       const pid = str(raw.id, 40);
       const qty = int(raw.qty, 0, 999, 0);
+      // cuántas se pagaron (lo demás queda "debe"); los pedidos viejos traían solo la casilla "bebidas pagadas"
+      const paid = raw.paid === undefined ? (b.drinksPaid ? qty : 0) : int(raw.paid, 0, qty, 0);
       const k = known.get(pid);
       if (!k || qty <= 0 || items.some((x) => x.id === pid)) continue;
-      items.push({ id: pid, name: k.name, price: k.price, qty });
+      items.push({ id: pid, name: k.name, price: k.price, qty, paid });
     }
     const players = ((Array.isArray(b.players) ? b.players : []).slice(0, 30) as Record<string, unknown>[]).map((p) => ({ name: str(p.name, 30), paid: !!p.paid }));
-    const caja: Caja = { items, players, drinksPaid: !!b.drinksPaid && items.length > 0, note: str(b.note, 200) };
+    const caja: Caja = { items, players, drinksPaid: items.length > 0 && items.every((i) => i.paid === i.qty), note: str(b.note, 200) };
 
     await saveCaja(date, id, caja);
-    if (b.habitual === true && isFijo(id)) await setFijoItems(id, items);
+    // el consumo habitual de un turno fijo arranca cada semana sin pagar
+    if (b.habitual === true && isFijo(id)) await setFijoItems(id, items.map((i) => ({ ...i, paid: 0 })));
     return ok({ caja });
   } catch (e) {
     return handle(e);

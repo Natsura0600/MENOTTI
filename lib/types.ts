@@ -24,7 +24,8 @@ export type Role = "admin" | "staff";
 // ---------- caja ----------
 export type Product = { id: string; name: string; price: number; active: boolean };
 /** Producto cargado en un turno. Guarda nombre y precio del momento, así un cambio de precios no altera lo ya cobrado. */
-export type Item = { id: string; name: string; price: number; qty: number };
+/** paid: cuántas de esas unidades ya se pagaron (el resto se debe). Si falta, se usa la casilla vieja drinksPaid de la caja. */
+export type Item = { id: string; name: string; price: number; qty: number; paid?: number };
 export type Player = { name: string; paid: boolean };
 export type Caja = { items: Item[]; players: Player[]; drinksPaid: boolean; note: string };
 
