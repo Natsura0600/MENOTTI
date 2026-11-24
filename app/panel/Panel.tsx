@@ -128,7 +128,8 @@ function Agenda({ today, initialDate, say, admin, products, vapidKey }: AgendaPr
 
   const courts = data?.courts.filter((c) => c.active) ?? [];
   const bookings = data?.bookings ?? [];
-  const real = bookings.filter((b) => b.origin !== "bloqueo");
+  // los bloqueos (de un día o semanales) no son turnos: no cuentan ni suman plata
+  const real = bookings.filter((b) => b.origin !== "bloqueo" && !b.block);
   const total = real.reduce((s, b) => s + b.price, 0);
   const cajaMap = data?.caja ?? {};
   // Resumen de caja del día (solo lo ve el dueño)
@@ -184,12 +185,12 @@ function Agenda({ today, initialDate, say, admin, products, vapidKey }: AgendaPr
               {slotsOf(c).map((t) => {
                 const b = bookings.find((x) => x.courtId === c.id && x.start < t + c.dur && t < x.start + x.dur);
                 const sh = !b ? sharedBusy(c, t) : undefined;
-                const cls = b ? b.origin : sh ? "shared" : "";
+                const cls = b ? (b.block ? "bloqueo" : b.origin) : sh ? "shared" : "";
                 return (
                   <button key={t} className={"slot " + cls} disabled={!!sh} onClick={() => setSel({ court: c, start: t, booking: b })}>
                     <b>{hm(t)}</b>
-                    <span>{b ? (b.origin === "web" ? "🌐 " : b.origin === "fijo" ? "📌 " : b.origin === "bloqueo" ? "🚫 " : "") + b.name : sh ? "Ocupada (cancha compartida)" : "Libre"}</span>
-                    {b && b.origin !== "bloqueo" && <CajaMark b={b} map={cajaMap} />}
+                    <span>{b ? (b.block ? "🚫🔁 " : b.origin === "web" ? "🌐 " : b.origin === "fijo" ? "📌 " : b.origin === "bloqueo" ? "🚫 " : "") + b.name : sh ? "Ocupada (cancha compartida)" : "Libre"}</span>
+                    {b && b.origin !== "bloqueo" && !b.block && <CajaMark b={b} map={cajaMap} />}
                   </button>
                 );
               })}
@@ -239,6 +240,7 @@ type SlotModalProps = { sel: Sel; date: string; products: Product[]; cajaMap: Re
 function SlotModal({ sel, date, products, cajaMap, onCaja, onClose, onDone }: SlotModalProps) {
   const { court, start, booking: b } = sel;
   const [type, setType] = useState<"manual" | "fijo" | "bloqueo">("manual");
+  const [weekly, setWeekly] = useState(false); // bloqueo que se repite todas las semanas
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [err, setErr] = useState("");
@@ -273,7 +275,7 @@ function SlotModal({ sel, date, products, cajaMap, onCaja, onClose, onDone }: Sl
             <div className="card" style={{ background: "#0f0f0f" }}>
               <div style={{ fontSize: 20, fontWeight: 800 }}>{b.name}</div>
               <div className="mut small">
-                {b.origin === "web" ? "Reservó por la web" : b.origin === "fijo" ? `Turno fijo todos los ${DOW_NAMES[dayOfWeek(date)]}${b.web ? " · lo sacó por la web" : ""}` : b.origin === "bloqueo" ? "Horario bloqueado" : "Cargado a mano"}
+                {b.block ? `Bloqueo semanal: todos los ${DOW_NAMES[dayOfWeek(date)]}` : b.origin === "web" ? "Reservó por la web" : b.origin === "fijo" ? `Turno fijo todos los ${DOW_NAMES[dayOfWeek(date)]}${b.web ? " · lo sacó por la web" : ""}` : b.origin === "bloqueo" ? "Horario bloqueado" : "Cargado a mano"}
                 {b.price > 0 && ` · ${money(b.price)}`}
               </div>
               {b.phone && <div style={{ marginTop: 6 }}>📞 {b.phone}</div>}
@@ -283,13 +285,15 @@ function SlotModal({ sel, date, products, cajaMap, onCaja, onClose, onDone }: Sl
                 📲 Escribirle por WhatsApp
               </a>
             )}
-            {b.origin !== "bloqueo" && (
+            {b.origin !== "bloqueo" && !b.block && (
               <TurnoCaja key={b.id} b={b} court={court} date={date} initial={cajaOf(b, cajaMap)} saved={!!cajaMap[b.id]} products={products} onSaved={(c, m) => onCaja(b.id, c, m)} />
             )}
             {b.origin === "fijo" ? (
               <>
                 <button className="btn danger full" disabled={busy} onClick={() => run(() => api("/api/panel/turnos", "DELETE", { id: b.id, date, origin: "fijo", scope: "dia" }), "Liberado solo por este día")}>Liberar solo este día</button>
-                <button className="btn danger full" disabled={busy} onClick={() => confirm("¿Borrar este turno fijo para siempre?") && run(() => api("/api/panel/turnos", "DELETE", { id: b.id, date, origin: "fijo", scope: "siempre" }), "Turno fijo borrado")}>Borrar turno fijo para siempre</button>
+                <button className="btn danger full" disabled={busy} onClick={() => confirm(b.block ? "¿Quitar este bloqueo de todas las semanas?" : "¿Borrar este turno fijo para siempre?") && run(() => api("/api/panel/turnos", "DELETE", { id: b.id, date, origin: "fijo", scope: "siempre" }), b.block ? "Bloqueo semanal quitado" : "Turno fijo borrado")}>
+                  {b.block ? "Quitar bloqueo semanal" : "Borrar turno fijo para siempre"}
+                </button>
               </>
             ) : (
               <button className="btn danger full" disabled={busy} onClick={() => confirm(b.origin === "bloqueo" ? "¿Desbloquear este horario?" : `¿Cancelar el turno de ${b.name}?`) && run(() => api("/api/panel/turnos", "DELETE", { id: b.id, date }), b.origin === "bloqueo" ? "Horario desbloqueado" : "Turno cancelado")}>
@@ -306,9 +310,20 @@ function SlotModal({ sel, date, products, cajaMap, onCaja, onClose, onDone }: Sl
               <button className={type === "bloqueo" ? "on" : ""} onClick={() => setType("bloqueo")}>Bloquear</button>
             </div>
             {type === "fijo" && <p className="mut small" style={{ marginBottom: 12 }}>Se repite todos los {DOW_NAMES[dayOfWeek(date)]} a las {hm(start)}.</p>}
+            {type === "bloqueo" && (
+              <label className="switch" style={{ marginBottom: 12 }}>
+                <input type="checkbox" checked={weekly} onChange={(e) => setWeekly(e.target.checked)} />
+                Repetir todas las semanas
+              </label>
+            )}
+            {type === "bloqueo" && weekly && (
+              <p className="mut small" style={{ margin: "-4px 0 12px" }}>
+                Queda bloqueado todos los {DOW_NAMES[dayOfWeek(date)]} a las {hm(start)}, sin precio ni caja. Sirve para una escuelita, un club o un uso propio.
+              </p>
+            )}
             <div className="field">
               <label>{type === "bloqueo" ? "Motivo (opcional)" : "Nombre"}</label>
-              <input type="text" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={type === "bloqueo" ? "Ej: Mantenimiento" : "Ej: Juan Pérez"} />
+              <input type="text" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={type === "bloqueo" ? (weekly ? "Ej: Escuelita" : "Ej: Mantenimiento") : "Ej: Juan Pérez"} />
             </div>
             {type !== "bloqueo" && (
               <div className="field">
@@ -317,8 +332,13 @@ function SlotModal({ sel, date, products, cajaMap, onCaja, onClose, onDone }: Sl
               </div>
             )}
             <div className="stack">
-              <button className="btn big" disabled={busy || (type !== "bloqueo" && !name.trim())} onClick={() => run(() => api("/api/panel/turnos", "POST", { type, courtId: court.id, date, start, name, phone }), type === "bloqueo" ? "Horario bloqueado" : type === "fijo" ? "Turno fijo cargado ✓" : "Turno cargado ✓")}>
-                {busy ? "Guardando…" : type === "bloqueo" ? "Bloquear horario" : "Guardar turno"}
+              <button className="btn big" disabled={busy || (type !== "bloqueo" && !name.trim())} onClick={() =>
+                  run(
+                    () => api("/api/panel/turnos", "POST", type === "bloqueo" && weekly ? { type: "fijo", block: true, courtId: court.id, date, start, name } : { type, courtId: court.id, date, start, name, phone }),
+                    type === "bloqueo" ? (weekly ? "Bloqueo semanal cargado ✓" : "Horario bloqueado") : type === "fijo" ? "Turno fijo cargado ✓" : "Turno cargado ✓",
+                  )
+                }>
+                {busy ? "Guardando…" : type === "bloqueo" ? (weekly ? "Bloquear todas las semanas" : "Bloquear horario") : "Guardar turno"}
               </button>
               <button className="btn ghost full" onClick={onClose}>Cancelar</button>
             </div>

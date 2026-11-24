@@ -81,9 +81,10 @@ export type Fijo = {
   items?: Item[]; // consumo habitual
   web?: boolean; // lo sacó el cliente desde la web
   token?: string; // código secreto para que el cliente lo administre (solo los de la web)
+  block?: boolean; // bloqueo semanal: ocupa el horario todas las semanas, sin precio ni caja (ej: una escuelita)
 };
 
 /** Turno ya resuelto para un día (reserva o turno fijo) */
-export type Booking = { id: string; courtId: string; start: number; dur: number; name: string; phone: string; origin: Origin; price: number; habitual?: Item[]; web?: boolean };
+export type Booking = { id: string; courtId: string; start: number; dur: number; name: string; phone: string; origin: Origin; price: number; habitual?: Item[]; web?: boolean; block?: boolean };
 
 export type LastBooking = { name: string; date: string; start: number; at: number };

@@ -158,7 +158,7 @@ export async function dayBookings(date: string, courts: Court[], nightFrom: numb
     if (f.dow !== dow || date < f.since || skips.includes(f.id)) continue;
     const c = courts.find((x) => x.id === f.courtId);
     if (!c) continue;
-    out.push({ id: f.id, courtId: f.courtId, start: f.start, dur: f.dur, name: f.name, phone: f.phone, origin: "fijo", price: priceOf(c, f.start, nightFrom), habitual: f.items, web: f.web });
+    out.push({ id: f.id, courtId: f.courtId, start: f.start, dur: f.dur, name: f.name, phone: f.phone, origin: "fijo", price: f.block ? 0 : priceOf(c, f.start, nightFrom), habitual: f.block ? undefined : f.items, web: f.web, block: f.block });
   }
   return out.sort((a, b) => a.start - b.start);
 }
@@ -256,7 +256,7 @@ export async function cancelReserva(date: string, id: string, known?: Reserva) {
  * Crea un turno fijo. Desde el panel (web=false) lo carga el complejo; desde la web (web=true) lo saca el cliente,
  * con las mismas reglas que una reserva común más algunas propias, y sin mostrarle datos de otros clientes.
  */
-export async function addFijo(input: { courtId: string; date: string; start: number; name: string; phone: string }, web = false) {
+export async function addFijo(input: { courtId: string; date: string; start: number; name: string; phone: string; block?: boolean }, web = false) {
   const { config, courts } = await getSiteFresh();
   const c = courts.find((x) => x.id === input.courtId && (!web || x.active));
   if (!c) throw new BookingError("La cancha no existe.");
@@ -297,6 +297,7 @@ export async function addFijo(input: { courtId: string; date: string; start: num
     }
     const f: Fijo = { id: newId("f"), courtId: c.id, dow, start: input.start, dur: c.dur, name: input.name, phone: input.phone, since: input.date };
     if (web) Object.assign(f, { web: true, token: newToken() });
+    else if (input.block) Object.assign(f, { block: true, phone: "" });
     await saveFijos([...fijos, f]);
     // los días que ya estaban en caché pasan a tener este turno
     for (let w = 0; w * 7 <= config.daysAhead + 7; w++) bust(TAG.day(addDays(input.date, w * 7)));

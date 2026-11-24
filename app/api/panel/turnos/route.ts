@@ -10,12 +10,13 @@ export async function POST(req: Request) {
     const type = String(b.type);
     const date = String(b.date ?? "");
     const start = Number(b.start);
-    const name = str(b.name, 60) || (type === "bloqueo" ? "Bloqueado" : "");
+    const block = type === "fijo" && b.block === true; // bloqueo semanal (sin precio ni caja)
+    const name = str(b.name, 60) || (type === "bloqueo" || block ? "Bloqueado" : "");
     const phone = cleanPhone(b.phone);
     const courtId = str(b.courtId, 40);
     if (!isValidDate(date) || !Number.isInteger(start)) return fail("Elegí día y horario.");
     if (!name) return fail("Poné un nombre para identificar el turno.");
-    if (type === "fijo") return ok({ id: (await addFijo({ courtId, date, start, name, phone })).id });
+    if (type === "fijo") return ok({ id: (await addFijo({ courtId, date, start, name, phone, block })).id });
     if (type !== "manual" && type !== "bloqueo") return fail("Tipo de turno inválido.");
     const r = await createReserva({ courtId, date, start, name, phone, origin: type }, true);
     return ok({ id: r.id });
